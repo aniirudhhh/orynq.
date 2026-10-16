@@ -1,5 +1,7 @@
 package com.theveloper.pixelplay.presentation.screens
 
+import com.theveloper.pixelplay.AppIdentity
+
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -363,7 +365,7 @@ private fun AboutHeroCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = stringResource(R.string.about_tagline),
+                            text = stringResource(R.string.orynq_about_tagline),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -411,15 +413,15 @@ private fun AboutHeroCard(
                         subtitle = stringResource(R.string.about_github_subtitle),
                         iconRes = R.drawable.github,
                         contentDescription = stringResource(R.string.about_cd_open_github_repo),
-                        onClick = { openUrl(context, "https://github.com/theovilardo/PixelPlayer") },
+                        onClick = { openUrl(context, AppIdentity.REPOSITORY_URL) },
                         modifier = Modifier.weight(1f),
                     )
                     SocialChip(
                         label = stringResource(R.string.about_telegram_label),
-                        subtitle = stringResource(R.string.about_telegram_subtitle),
+                        subtitle = stringResource(R.string.orynq_telegram_handle),
                         iconRes = R.drawable.telegram,
-                        contentDescription = stringResource(R.string.about_cd_join_telegram),
-                        onClick = { openUrl(context, "https://t.me/thevelopersupport") },
+                        contentDescription = stringResource(R.string.orynq_cd_contact_telegram),
+                        onClick = { openUrl(context, AppIdentity.TELEGRAM_URL) },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -484,7 +486,7 @@ private fun SocialChip(
 @Composable
 private fun CommunitySignalsRow() {
     val labels = listOf(
-        stringResource(R.string.about_signal_open_source) to Icons.Rounded.Public,
+        stringResource(R.string.orynq_about_online_local) to Icons.Rounded.Public,
         stringResource(R.string.about_signal_community_first) to Icons.Rounded.AutoAwesome,
         stringResource(R.string.about_signal_material3) to Icons.Rounded.Palette,
     )

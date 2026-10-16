@@ -35,5 +35,5 @@ jobs:
       - name: Upload Wear OS APK artifact
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: PixelPlay-wear-only-debug
+          name: orynq-wear-only-debug
           path: wear/build/outputs/apk/debug/*.apk

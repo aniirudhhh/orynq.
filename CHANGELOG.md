@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-beta] — 2026-10-17
+
+- Establish orynq. versioning with upgrade-compatible version code 10.
+- Point About, feedback, and project metadata to aniirudhhh/orynq.; contact @ButcherXElite on Telegram.
+- Read optional remote announcements from this repository on main.
+- Refresh welcome and changelog copy for Quick picks, cached Home, filtered Search, and listening sync.
+- Preserve PixelPlayer attribution, licenses, application ID, and existing user data.
+
+### Earlier orynq. development
+
 ### orynq. — 2026-10-14
 - Online Daily Mix uses qualified listening sessions, related-song recommendations, daily caching, and manual refresh.
 - YouTube Music streaming, song-only search, and related-song radio from Home and Search.

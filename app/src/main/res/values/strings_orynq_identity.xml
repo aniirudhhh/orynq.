@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="orynq_about_tagline">YouTube Music discovery. Your music, connected.</string>
+    <string name="orynq_about_online_local">Online + local</string>
+    <string name="orynq_telegram_handle" translatable="false">\@ButcherXElite</string>
+    <string name="orynq_cd_contact_telegram">Contact @ButcherXElite on Telegram</string>
+</resources>

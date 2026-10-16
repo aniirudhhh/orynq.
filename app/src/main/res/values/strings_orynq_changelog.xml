@@ -4,21 +4,24 @@
     <string name="orynq_welcome_title">Your music, connected</string>
     <string name="orynq_welcome_body">Stream and search YouTube Music songs. Connect your account from Home for a personalized feed, enjoy sharper artwork, and get started with just three setup screens.</string>
     <string name="orynq_welcome_radio_title">Keep the music going</string>
-    <string name="orynq_welcome_radio_body">Play a song from Home or Search to build a queue of related songs. The featured card rotates every 15 seconds; the list refreshes when you return after 30 minutes.</string>
+    <string name="orynq_welcome_radio_body">Play a song from Home or Search to build a queue of related songs. Discover Quick picks and personalized shelves, or pull down on Home to refresh.</string>
     <string-array name="orynq_changelog_new">
         <item>Daily Mix now learns from online listening history and combines familiar songs with related discoveries.</item>
         <item>YouTube Music streaming and song search in the native player.</item>
         <item>In-app account connection for a personalized Home feed, with encrypted session storage and disconnect controls.</item>
         <item>Song radio: playing from Home or Search queues related songs.</item>
         <item>Pull down on Home to fetch a fresh YouTube Music feed whenever you want.</item>
-        <item>A rotating featured card and Search-style song rows on Home.</item>
+        <item>Quick picks first, personalized Home shelves, and instant access to your saved feed.</item>
+        <item>Search filters for songs, albums, artists, and playlists, with collection browsing.</item>
+        <item>Optional listening-history sync with your connected YouTube Music account.</item>
     </string-array>
     <string-array name="orynq_changelog_improvements">
         <item>High-resolution YouTube Music album artwork where available, with safer square-cover selection and video-thumbnail fallback.</item>
-        <item>More relevant song-only YouTube Music search results.</item>
-        <item>Featured cards rotate every 15 seconds while Home is visible. After 30 minutes, the song list refreshes when you return.</item>
+        <item>Clear Search loading states and results tailored to the selected filter.</item>
+        <item>Home refreshes quietly when needed without replacing content while you browse.</item>
         <item>Three-step onboarding: Welcome, Appearance, and Ready.</item>
         <item>A cleaner orynq. header and a simpler About screen.</item>
+        <item>Consistent song menus across Home, Search, and playlists, with real song metadata when available.</item>
     </string-array>
     <string-array name="orynq_changelog_fixes">
         <item>Create a playlist and add selected songs in one step, with reliable online-song storage and save feedback.</item>
@@ -28,5 +31,6 @@
         <item>Home and Search playback no longer queues unrelated feed or search items.</item>
         <item>Related songs stay in the queue when shuffle is turned off.</item>
         <item>Improved Google sign-in redirects and loading-state recovery.</item>
+        <item>Updated orynq. version, project links, and Telegram contact.</item>
     </string-array>
 </resources>

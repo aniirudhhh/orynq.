@@ -1,5 +1,7 @@
 package com.theveloper.pixelplay.data.ai.provider
 
+import com.theveloper.pixelplay.AppIdentity
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -96,7 +98,7 @@ class GenericOpenAiClient(
                 .addHeader("Content-Type", "application/json")
             
             if (providerName.equals("OpenRouter", ignoreCase = true)) {
-                requestBuilder.addHeader("HTTP-Referer", "https://github.com/theovilardo/PixelPlayer")
+                requestBuilder.addHeader("HTTP-Referer", AppIdentity.REPOSITORY_URL)
                 requestBuilder.addHeader("X-Title", "orynq.")
             }
 

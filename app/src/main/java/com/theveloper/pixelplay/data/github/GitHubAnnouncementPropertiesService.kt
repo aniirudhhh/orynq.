@@ -1,5 +1,7 @@
 package com.theveloper.pixelplay.data.github
 
+import com.theveloper.pixelplay.AppIdentity
+
 import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -36,9 +38,9 @@ class GitHubAnnouncementPropertiesService @Inject constructor() {
      * - play_store_link_pending_message
      */
     suspend fun fetchPlayStoreAnnouncement(
-        owner: String = "theovilardo",
-        repo: String = "PixelPlay",
-        branch: String = "master",
+        owner: String = AppIdentity.GITHUB_OWNER,
+        repo: String = AppIdentity.GITHUB_REPO,
+        branch: String = AppIdentity.GITHUB_BRANCH,
         configPath: String = "remote-config/app-announcements.properties",
     ): Result<PlayStoreAnnouncementRemoteConfig> {
         return withContext(Dispatchers.IO) {

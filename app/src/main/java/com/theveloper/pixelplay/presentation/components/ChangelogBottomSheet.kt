@@ -41,6 +41,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.theveloper.pixelplay.R
+import com.theveloper.pixelplay.BuildConfig
 import com.theveloper.pixelplay.presentation.components.subcomps.SineWaveLine
 import com.theveloper.pixelplay.ui.theme.ExpTitleTypography
 import com.theveloper.pixelplay.ui.theme.GoogleSansRounded
@@ -59,8 +60,8 @@ data class ChangelogVersion(
 @Composable
 private fun changelogVersions(): List<ChangelogVersion> = listOf(
     ChangelogVersion(
-        version = "orynq.",
-        date = "2026-10-14",
+        version = "orynq. ${BuildConfig.VERSION_NAME}",
+        date = "2026-10-17",
         sections = listOf(
             ChangelogSection(R.string.changelog_sec_whats_new, R.array.orynq_changelog_new),
             ChangelogSection(R.string.changelog_sec_improvements, R.array.orynq_changelog_improvements),

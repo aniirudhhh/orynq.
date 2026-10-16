@@ -311,8 +311,8 @@
     <string name="presentation_batch_g_presets_cd_delete">حذف</string>
 
     <!-- Beta Sheets Info -->
-    <string name="presentation_batch_g_beta_sheet_version">الإصدار التجريبي 0.7.0</string>
-    <string name="presentation_batch_g_beta_sheet_welcome_title">مرحباً بك في orynq. 0.7.0-beta</string>
+    <string name="presentation_batch_g_beta_sheet_version">الإصدار التجريبي 0.1.0</string>
+    <string name="presentation_batch_g_beta_sheet_welcome_title">مرحباً بك في orynq. 0.1.0-beta</string>
     <string name="presentation_batch_g_beta_sheet_welcome_body">أنت تستخدم بناءً تجريبياً قد يحتوي على أخطاء، أو حالات توقف مفاجئ، أو ميزات تجريبية. ساعدنا في التحسين من خلال الإبلاغ عن المشكلات.</string>
     <string name="presentation_batch_g_beta_sheet_expect_title">ماذا تتوقع</string>
     <string name="presentation_batch_g_beta_sheet_expect_1">قد تحدث أخطاء، توقفات مفاجئة، أو ميزات غير مكتملة بشكل غير متوقع.</string>

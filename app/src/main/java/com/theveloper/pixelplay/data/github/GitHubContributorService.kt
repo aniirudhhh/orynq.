@@ -1,5 +1,7 @@
 package com.theveloper.pixelplay.data.github
 
+import com.theveloper.pixelplay.AppIdentity
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -25,8 +27,8 @@ class GitHubContributorService @Inject constructor() {
      * Fetches contributors from the GitHub repository
      */
     suspend fun fetchContributors(
-        owner: String = "theovilardo",
-        repo: String = "PixelPlay"
+        owner: String = AppIdentity.GITHUB_OWNER,
+        repo: String = AppIdentity.GITHUB_REPO
     ): Result<List<GitHubContributor>> {
         return withContext(Dispatchers.IO) {
             try {

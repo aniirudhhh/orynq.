@@ -1,5 +1,8 @@
 package com.theveloper.pixelplay.presentation.components
 
+import com.theveloper.pixelplay.AppIdentity
+import com.theveloper.pixelplay.BuildConfig
+
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -71,17 +74,17 @@ import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 @Composable
 fun BetaInfoBottomSheet(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val issuesUrl = "https://github.com/theovilardo/PixelPlayer/issues"
-    val reportUrl = "https://github.com/theovilardo/PixelPlayer/issues/new/choose"
+    val issuesUrl = AppIdentity.ISSUES_URL
+    val reportUrl = AppIdentity.REPORT_URL
 
     val fabCornerRadius = 18.dp
 
     val versionName = remember {
         try {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            packageInfo.versionName ?: "0.7.5-beta"
+            packageInfo.versionName ?: BuildConfig.VERSION_NAME
         } catch (_: Exception) {
-            "0.7.5-beta"
+            BuildConfig.VERSION_NAME
         }
     }
 
