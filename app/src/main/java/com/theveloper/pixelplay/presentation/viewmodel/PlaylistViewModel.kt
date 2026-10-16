@@ -75,7 +75,8 @@ class PlaylistViewModel @Inject constructor(
     private val dailyMixManager: DailyMixManager,
     private val aiPlaylistGenerator: AiPlaylistGenerator,
     private val m3uManager: M3uManager,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val createPlaylistWithSongs: com.theveloper.pixelplay.data.playlist.CreatePlaylistWithSongs
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlaylistUiState())
@@ -283,6 +284,22 @@ class PlaylistViewModel @Inject constructor(
                     )
                 }
             }
+        }
+    }
+
+    fun createPlaylistWithSelectedSongs(
+        name: String,
+        songs: List<Song>,
+        onCreated: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                createPlaylistWithSongs(name, songs)
+                _playlistCreationEvent.emit(true)
+                onCreated()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { onFailure(context.getString(R.string.playlist_create_failed)) }
         }
     }
 
@@ -1187,7 +1204,7 @@ class PlaylistViewModel @Inject constructor(
                     musicDir.mkdirs()
                 }
 
-                val exportDir = File(musicDir, "PixelPlayer Exports")
+                val exportDir = File(musicDir, "orynq. Exports")
                 if (!exportDir.exists()) {
                     exportDir.mkdirs()
                 }

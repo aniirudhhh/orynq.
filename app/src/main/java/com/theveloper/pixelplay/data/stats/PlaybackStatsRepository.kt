@@ -61,7 +61,8 @@ class PlaybackStatsRepository @Inject constructor(
 
     data class PlaybackHistoryEntry(
         val songId: String,
-        val timestamp: Long
+        val timestamp: Long,
+        val listenedMs: Long = 0L
     )
 
     data class SongPlaybackSummary(
@@ -472,7 +473,8 @@ class PlaybackStatsRepository @Inject constructor(
             .map { event ->
                 PlaybackHistoryEntry(
                     songId = event.songId,
-                    timestamp = event.timestamp.coerceAtLeast(0L)
+                    timestamp = event.timestamp.coerceAtLeast(0L),
+                    listenedMs = event.durationMs.coerceAtLeast(0L)
                 )
             }
             .toList()

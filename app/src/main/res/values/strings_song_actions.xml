@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="song_actions_shuffle_on">Shuffle on</string>
+    <string name="song_actions_shuffle_off">Shuffle off</string>
+    <string name="song_actions_repeat_off">Repeat off</string>
+    <string name="song_actions_repeat_one">Repeat song</string>
+    <string name="song_actions_repeat_all">Repeat queue</string>
+    <string name="song_actions_open_music">Open in YouTube Music</string>
+</resources>

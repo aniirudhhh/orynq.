@@ -31,9 +31,11 @@ import timber.log.Timber
 @Singleton
 class ListeningStatsTracker @Inject constructor(
     private val dailyMixManager: DailyMixManager,
-    private val playbackStatsRepository: PlaybackStatsRepository
+    private val playbackStatsRepository: PlaybackStatsRepository,
+    private val listeningSync: com.theveloper.pixelplay.data.youtube.YouTubeListeningSync
 ) {
     private var currentSession: ActiveSession? = null
+    private var syncTicket: com.theveloper.pixelplay.data.youtube.ListeningSyncTicket? = null
     private var pendingVoluntarySongId: String? = null
     private var scope: CoroutineScope? = null
     private val persistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -109,6 +111,7 @@ class ListeningStatsTracker @Inject constructor(
         val nowEpoch = System.currentTimeMillis()
         val normalizedDuration = normalizeDuration(durationMs, fallbackDurationMs)
 
+        syncTicket = listeningSync.begin(safeSongId)
         currentSession = ActiveSession(
             songId = safeSongId,
             totalDurationMs = normalizedDuration,
@@ -226,6 +229,8 @@ class ListeningStatsTracker @Inject constructor(
         val nowEpoch = System.currentTimeMillis()
         accumulateRealtimeListening(session, nowRealtime)
         val listened = session.accumulatedListeningMs.coerceAtLeast(0L)
+        listeningSync.complete(syncTicket, listened)
+        syncTicket = null
         if (listened >= MIN_SESSION_LISTEN_MS) {
             val rawEndTimestamp = when {
                 session.isPlaying -> nowEpoch
@@ -238,7 +243,8 @@ class ListeningStatsTracker @Inject constructor(
             val songId = session.songId
             val historyEntry = PlaybackStatsRepository.PlaybackHistoryEntry(
                 songId = songId,
-                timestamp = timestamp
+                timestamp = timestamp,
+                listenedMs = listened
             )
             _playbackHistory.update { current ->
                 (listOf(historyEntry) + current).take(MAX_INTERNAL_PLAYBACK_HISTORY_ITEMS)

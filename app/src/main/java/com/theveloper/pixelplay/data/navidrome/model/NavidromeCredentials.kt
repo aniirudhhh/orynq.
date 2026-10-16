@@ -14,13 +14,13 @@ import com.theveloper.pixelplay.data.stream.CloudStreamSecurity
  * @property serverUrl The base URL of the Navidrome server (e.g., "https://music.example.com")
  * @property username The username for authentication
  * @property password The password (stored securely, used to generate tokens)
- * @property clientId The client identifier sent to the server (default: "PixelPlayer")
+ * @property clientId The client identifier sent to the server (default: "orynq.")
  */
 data class NavidromeCredentials(
     val serverUrl: String,
     val username: String,
     val password: String,
-    val clientId: String = "PixelPlayer"
+    val clientId: String = "orynq."
 ) {
     companion object {
         /**
@@ -35,7 +35,7 @@ data class NavidromeCredentials(
             serverUrl = "",
             username = "",
             password = "",
-            clientId = "PixelPlayer"
+            clientId = "orynq."
         )
     }
 

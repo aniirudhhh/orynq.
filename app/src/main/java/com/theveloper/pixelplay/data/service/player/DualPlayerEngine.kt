@@ -212,6 +212,7 @@ internal fun loadControlBufferProfileFor(isLowRamDevice: Boolean): LoadControlBu
 @OptIn(UnstableApi::class)
 @Singleton
 class DualPlayerEngine @Inject constructor(
+    private val youtubeRepository: com.theveloper.pixelplay.data.youtube.YouTubeRepository,
     @param:ApplicationContext private val context: Context,
     private val telegramRepository: TelegramRepository,
     private val telegramStreamProxy: com.theveloper.pixelplay.data.telegram.TelegramStreamProxy,
@@ -234,7 +235,7 @@ class DualPlayerEngine @Inject constructor(
         private const val POST_TRANSITION_OFFLOAD_GUARD_MS = 2_000L
         private const val MAX_AUXILIARY_TIMELINE_ITEMS = 200
         private val LOCAL_MEDIA_SCHEMES = setOf("content", "file", "android.resource")
-        private val REMOTE_MEDIA_SCHEMES = setOf("http", "https", "telegram", "netease", "qqmusic", "navidrome", "jellyfin", "gdrive")
+        private val REMOTE_MEDIA_SCHEMES = setOf("http", "https", "youtube", "telegram", "netease", "qqmusic", "navidrome", "jellyfin", "gdrive")
         // Subset of REMOTE_MEDIA_SCHEMES: schemes that need proxy resolution.
         // http/https resolve directly and must NOT enter the resolvedUriCache lookup path.
         private val CLOUD_PROXY_SCHEMES = setOf("telegram", "netease", "qqmusic", "navidrome", "jellyfin", "gdrive")
@@ -1112,7 +1113,29 @@ class DualPlayerEngine @Inject constructor(
             }
         }
         
-        val dataSourceFactory = DefaultDataSource.Factory(context)
+        val dataSourceFactory = DefaultDataSource.Factory(context, androidx.media3.datasource.DataSource.Factory {
+            object : androidx.media3.datasource.DataSource {
+                private var delegate: androidx.media3.datasource.DataSource? = null
+                private val listeners = mutableListOf<androidx.media3.datasource.TransferListener>()
+                override fun addTransferListener(listener: androidx.media3.datasource.TransferListener) {
+                    listeners.add(listener)
+                    delegate?.addTransferListener(listener)
+                }
+                override fun open(spec: DataSpec): Long {
+                    val source = if (spec.uri.scheme == "youtube") {
+                        com.theveloper.pixelplay.data.youtube.YouTubeDataSource(youtubeRepository)
+                    } else androidx.media3.datasource.DefaultHttpDataSource.Factory().createDataSource()
+                    delegate = source
+                    listeners.forEach(source::addTransferListener)
+                    return source.open(spec)
+                }
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                    checkNotNull(delegate).read(buffer, offset, length)
+                override fun getUri(): Uri? = delegate?.uri
+                override fun getResponseHeaders(): Map<String, List<String>> = delegate?.responseHeaders.orEmpty()
+                override fun close() { try { delegate?.close() } finally { delegate = null } }
+            }
+        })
         val resolvingFactory = ResolvingDataSource.Factory(dataSourceFactory, resolver)
         val extractorsFactory = DefaultExtractorsFactory()
             // FLAG_WORKAROUND_IGNORE_EDIT_LISTS intentionally removed: it breaks Opus files

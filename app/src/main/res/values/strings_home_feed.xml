@@ -1,0 +1,9 @@
+<resources>
+    <string name="home_feed_quick_picks">Quick picks</string>
+    <string name="home_feed_play_all">Play all</string>
+    <string name="home_feed_close">Close collection</string>
+    <string name="home_feed_retry">Retry</string>
+    <string name="home_feed_load_more">Load more</string>
+    <string name="home_feed_loading_more">Loading…</string>
+    <string name="home_feed_empty_collection">No playable content is available in this collection right now.</string>
+</resources>

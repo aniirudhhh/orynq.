@@ -19,7 +19,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
-import java.util.Calendar
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.collect
+import com.theveloper.pixelplay.data.youtube.OnlineDailyMixManager
+import com.theveloper.pixelplay.data.youtube.YouTubeRepository
+import com.theveloper.pixelplay.data.youtube.OnlineTrack
+import com.theveloper.pixelplay.data.youtube.mixDay
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,10 +41,19 @@ import javax.inject.Singleton
 class DailyMixStateHolder @Inject constructor(
     private val dailyMixManager: DailyMixManager,
     private val userPreferencesRepository: UserPreferencesRepository,
-    private val musicRepository: MusicRepository
+    private val musicRepository: MusicRepository,
+    private val onlineMixManager: OnlineDailyMixManager,
+    private val youtubeRepository: YouTubeRepository,
+    private val listeningStatsTracker: ListeningStatsTracker
 ) {
     private var scope: CoroutineScope? = null
     private var updateJob: Job? = null
+    private var historyJob: Job? = null
+    private var generation = 0L
+    private val _isUpdating = MutableStateFlow(false)
+    val isUpdating = _isUpdating.asStateFlow()
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
 
     private val _dailyMixSongs = MutableStateFlow<ImmutableList<Song>>(persistentListOf())
     val dailyMixSongs: StateFlow<ImmutableList<Song>> = _dailyMixSongs.asStateFlow()
@@ -52,6 +66,14 @@ class DailyMixStateHolder @Inject constructor(
      */
     fun initialize(coroutineScope: CoroutineScope) {
         scope = coroutineScope
+        historyJob?.cancel()
+        historyJob = coroutineScope.launch {
+            listeningStatsTracker.playbackHistory.collect { history ->
+                if (history.any { it.songId.startsWith("youtube:") && it.listenedMs >= 30_000 }) {
+                    updateDailyMix(musicRepository.getFavoriteSongIdsFlow())
+                }
+            }
+        }
     }
 
     /**
@@ -61,31 +83,44 @@ class DailyMixStateHolder @Inject constructor(
         _dailyMixSongs.update { currentList ->
             currentList.filterNot { it.id == songId }.toImmutableList()
         }
+        if (songId.startsWith("youtube:")) {
+            onlineMixManager.save(_dailyMixSongs.value.map {
+                OnlineTrack(it.id.removePrefix("youtube:"), it.title, it.artist, it.albumArtUriString, it.duration)
+            })
+        }
     }
 
     /**
      * Update the daily mix with new songs.
      * Uses getAllSongsOnce() to load songs on-demand instead of keeping a permanent subscription.
      */
-    fun updateDailyMix(favoriteSongIdsFlow: kotlinx.coroutines.flow.Flow<Set<String>>) {
+    fun updateDailyMix(favoriteSongIdsFlow: kotlinx.coroutines.flow.Flow<Set<String>>, forceOnline: Boolean = false) {
+        val requestGeneration = ++generation
         updateJob?.cancel()
         updateJob = scope?.launch(Dispatchers.IO) {
-            val allSongs = musicRepository.getAllSongsOnce()
-            if (allSongs.isNotEmpty()) {
-                val favoriteIds = favoriteSongIdsFlow.first()
-
-                // Generate daily mix
-                val mix = dailyMixManager.generateDailyMix(allSongs, favoriteIds)
-                _dailyMixSongs.value = mix.toImmutableList()
-                userPreferencesRepository.saveDailyMixSongIds(mix.map { it.id })
-
-                // Generate your mix
-                val yourMix = dailyMixManager.generateYourMix(allSongs, favoriteIds)
-                _yourMixSongs.value = yourMix.toImmutableList()
-                userPreferencesRepository.saveYourMixSongIds(yourMix.map { it.id })
-            } else {
-                _yourMixSongs.value = persistentListOf()
-            }
+            _isUpdating.value = true
+            _error.value = null
+            try {
+                val onlineMix = onlineMixManager.generate(listeningStatsTracker.playbackHistory.value, forceOnline)
+                if (!onlineMix.isNullOrEmpty()) {
+                    _dailyMixSongs.value = onlineMix.map { it.asSong() }.toImmutableList()
+                    userPreferencesRepository.saveLastDailyMixUpdateTimestamp(System.currentTimeMillis())
+                    return@launch
+                }
+                val allSongs = musicRepository.getAllSongsOnce()
+                if (allSongs.isNotEmpty()) {
+                    val favoriteIds = favoriteSongIdsFlow.first()
+                    val mix = dailyMixManager.generateDailyMix(allSongs, favoriteIds)
+                    _dailyMixSongs.value = mix.toImmutableList()
+                    userPreferencesRepository.saveDailyMixSongIds(mix.map { it.id })
+                    val yourMix = dailyMixManager.generateYourMix(allSongs, favoriteIds)
+                    _yourMixSongs.value = yourMix.toImmutableList()
+                    userPreferencesRepository.saveYourMixSongIds(yourMix.map { it.id })
+                    if (mix.isNotEmpty()) userPreferencesRepository.saveLastDailyMixUpdateTimestamp(System.currentTimeMillis())
+                } else _yourMixSongs.value = persistentListOf()
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _error.value = "Could not refresh Daily Mix. Your previous mix is still available." }
+            finally { if (generation == requestGeneration) _isUpdating.value = false }
         }
     }
 
@@ -94,6 +129,8 @@ class DailyMixStateHolder @Inject constructor(
      * instead of combining with the full allSongs flow.
      */
     fun loadPersistedDailyMix() {
+        val online = onlineMixManager.cached()
+        if (online.isNotEmpty()) _dailyMixSongs.value = online.map { it.asSong() }.toImmutableList()
         // Load Daily Mix
         scope?.launch {
             val dailyMixIds = userPreferencesRepository.dailyMixSongIdsFlow.first()
@@ -130,10 +167,7 @@ class DailyMixStateHolder @Inject constructor(
      * Force update the daily mix regardless of day.
      */
     fun forceUpdate(favoriteSongIdsFlow: kotlinx.coroutines.flow.Flow<Set<String>>) {
-        scope?.launch {
-            updateDailyMix(favoriteSongIdsFlow)
-            userPreferencesRepository.saveLastDailyMixUpdateTimestamp(System.currentTimeMillis())
-        }
+        updateDailyMix(favoriteSongIdsFlow, forceOnline = true)
     }
 
     /**
@@ -142,14 +176,8 @@ class DailyMixStateHolder @Inject constructor(
     fun checkAndUpdateIfNeeded(favoriteSongIdsFlow: kotlinx.coroutines.flow.Flow<Set<String>>) {
         scope?.launch {
             val lastUpdate = userPreferencesRepository.lastDailyMixUpdateFlow.first()
-            val today = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
-            val lastUpdateDay = Calendar.getInstance().apply {
-                timeInMillis = lastUpdate
-            }.get(Calendar.DAY_OF_YEAR)
-
-            if (today != lastUpdateDay) {
+            if (_dailyMixSongs.value.isEmpty() || mixDay(System.currentTimeMillis()) != mixDay(lastUpdate)) {
                 updateDailyMix(favoriteSongIdsFlow)
-                userPreferencesRepository.saveLastDailyMixUpdateTimestamp(System.currentTimeMillis())
             }
         }
     }
@@ -177,6 +205,7 @@ class DailyMixStateHolder @Inject constructor(
 
     fun onCleared() {
         updateJob?.cancel()
+        historyJob?.cancel()
         scope = null
     }
 }

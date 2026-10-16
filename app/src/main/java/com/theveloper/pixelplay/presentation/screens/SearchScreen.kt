@@ -69,6 +69,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DockedSearchBar
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -93,6 +94,8 @@ import com.theveloper.pixelplay.data.model.Album
 import com.theveloper.pixelplay.data.model.Genre
 import com.theveloper.pixelplay.data.model.Artist
 import com.theveloper.pixelplay.data.model.Playlist
+import com.theveloper.pixelplay.data.youtube.OnlineSearchCollection
+import com.theveloper.pixelplay.data.youtube.HomeFeedItem
 import com.theveloper.pixelplay.data.model.SearchFilterType
 import com.theveloper.pixelplay.data.model.SearchHistoryItem
 import com.theveloper.pixelplay.data.model.SearchResultItem
@@ -166,6 +169,8 @@ fun SearchScreen(
     navController: NavHostController,
     onSearchBarActiveChange: (Boolean) -> Unit = {}
 ) {
+    val online: com.theveloper.pixelplay.presentation.youtube.OnlineHomeViewModel = hiltViewModel()
+    val onlineState by online.state.collectAsStateWithLifecycle()
     var searchQuery by rememberSaveable { mutableStateOf(playerViewModel.searchQuery) }
     val statusBarTopInset = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
     val systemNavBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -240,6 +245,7 @@ fun SearchScreen(
     val favoriteSongIds by playerViewModel.favoriteSongIds.collectAsStateWithLifecycle()
     val selectedSongForInfo by playerViewModel.selectedSongForInfo.collectAsStateWithLifecycle()
     var showSongInfoBottomSheet by remember { mutableStateOf(false) }
+    var onlineSongMenu by remember { mutableStateOf<com.theveloper.pixelplay.presentation.components.OnlineSongMenuRequest?>(null) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val searchInputFocusRequester = remember { FocusRequester() }
 
@@ -259,10 +265,31 @@ fun SearchScreen(
     LaunchedEffect(searchQuery, currentFilter) {
         playerViewModel.performSearch(searchQuery)
     }
-    val searchResults = searchUiState.searchResults
+    LaunchedEffect(searchQuery, currentFilter) {
+        online.search(searchQuery, debounceMs = 400, filter = currentFilter)
+    }
+    val onlineResults = if (onlineState.query == searchQuery.trim() && onlineState.filter == currentFilter)
+        onlineState.tracks.map { SearchResultItem.SongItem(it.asSong()) } else emptyList()
+    val onlineCollections = if (onlineState.query == searchQuery.trim() && onlineState.filter == currentFilter)
+        onlineState.collections else emptyList()
+    val localResults = searchUiState.searchResults.filter { result ->
+        currentFilter == SearchFilterType.ALL || when (result) {
+            is SearchResultItem.SongItem -> currentFilter == SearchFilterType.SONGS
+            is SearchResultItem.AlbumItem -> currentFilter == SearchFilterType.ALBUMS
+            is SearchResultItem.ArtistItem -> currentFilter == SearchFilterType.ARTISTS
+            is SearchResultItem.PlaylistItem -> currentFilter == SearchFilterType.PLAYLISTS
+        }
+    }
+    val searchResults = (onlineResults + localResults).toImmutableList()
     val handleSongMoreOptionsClick: (Song) -> Unit = { song ->
-        playerViewModel.selectSongForInfo(song)
-        showSongInfoBottomSheet = true
+        if (song.id.startsWith("youtube:")) {
+            onlineSongMenu = com.theveloper.pixelplay.presentation.components.OnlineSongMenuRequest(song) {
+                playerViewModel.playOnlineRadio(song)
+            }
+        } else {
+            playerViewModel.selectSongForInfo(song)
+            showSongInfoBottomSheet = true
+        }
     }
 
     val searchbarCornerRadius = 28.dp
@@ -450,12 +477,17 @@ fun SearchScreen(
                         }
                         Box(modifier = Modifier.fillMaxSize()) {
                             GenreCategoriesGrid(
-                                genres = genres,
+                                genres = (listOf("Pop", "Rock", "Hip-Hop", "Jazz", "Electronic", "Classical", "Focus", "Chill").map { Genre(id = "youtube:$it", name = it) } + genres),
                                 onGenreClick = { genre ->
                                     Timber.tag("SearchScreen")
                                         .d("Genre clicked: ${genre.name} (ID: ${genre.id})")
-                                    val encodedGenreId = java.net.URLEncoder.encode(genre.id, "UTF-8")
-                                    navController.navigateSafely(Screen.GenreDetail.createRoute(encodedGenreId))
+                                    if (genre.id.startsWith("youtube:")) {
+                                        searchQuery = genre.name
+                                        playerViewModel.updateSearchQuery(genre.name)
+                                    } else {
+                                        val encodedGenreId = java.net.URLEncoder.encode(genre.id, "UTF-8")
+                                        navController.navigateSafely(Screen.GenreDetail.createRoute(encodedGenreId))
+                                    }
                                 },
                                 playerViewModel = playerViewModel,
                                 modifier = Modifier.padding(top = 12.dp),
@@ -566,18 +598,33 @@ fun SearchScreen(
                         }
                         Box(modifier = Modifier.fillMaxSize()) {
                             Crossfade(
-                                targetState = searchResults.isEmpty(),
+                                targetState = searchResults.isEmpty() && onlineCollections.isEmpty(),
                                 animationSpec = tween(durationMillis = 190),
                                 label = "search_results_fade"
                             ) { isEmpty ->
                                 if (isEmpty) {
-                                    EmptySearchResults(
+                                    if (searchQuery.isNotBlank() && (onlineState.loading || onlineState.query != searchQuery.trim() || onlineState.filter != currentFilter)) {
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                                androidx.compose.material3.CircularProgressIndicator()
+                                                Text(stringResource(R.string.search_searching), color = colorScheme.onSurfaceVariant)
+                                            }
+                                        }
+                                    } else if (onlineState.error != null && localResults.isEmpty() && onlineState.query == searchQuery.trim() && onlineState.filter == currentFilter) {
+                                        Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                                            Text(onlineState.error.orEmpty())
+                                            TextButton(onClick = { online.search(searchQuery, filter = currentFilter) }) { Text("Try again") }
+                                        }
+                                    } else EmptySearchResults(
                                         searchQuery = searchQuery,
                                         colorScheme = colorScheme
                                     )
                                 } else {
                                     SearchResultsList(
                                         results = searchResults,
+                                        onlineCollections = onlineCollections,
+                                        onOpenOnlineCollection = online::openCollection,
                                         searchQuery = searchQuery,
                                         playerViewModel = playerViewModel,
                                         onItemSelected = {
@@ -644,6 +691,13 @@ fun SearchScreen(
                                 }
                             }
 
+                            if ((searchResults.isNotEmpty() || onlineCollections.isNotEmpty()) && searchQuery.isNotBlank() &&
+                                (onlineState.loading || onlineState.query != searchQuery.trim() || onlineState.filter != currentFilter)) {
+                                androidx.compose.material3.LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                                )
+                            }
+
                             val count = when {
                                 isSongSelectionMode -> selectedSongs.size
                                 isPlaylistSelectionMode -> selectedPlaylists.size
@@ -674,7 +728,24 @@ fun SearchScreen(
 
     }
 
+    val onlineCollection by online.collection.collectAsStateWithLifecycle()
+    onlineCollection?.let { collection ->
+        key(collection.item.key) {
+            HomeCollectionSheet(collection, playerViewModel, online::closeCollection,
+                online::openCollection, online::loadMoreCollection, onSongMenu = { song, play ->
+                    online.closeCollection()
+                    onlineSongMenu = com.theveloper.pixelplay.presentation.components.OnlineSongMenuRequest(song, play)
+                })
+        }
+    }
+
+    onlineSongMenu?.let { request ->
+        com.theveloper.pixelplay.presentation.components.OnlineSongMenu(request, playerViewModel,
+            onDismiss = { onlineSongMenu = null }, onArtist = { searchQuery = it.artist })
+    }
+
     if (showSongInfoBottomSheet && selectedSongForInfo != null) {
+        val sheetPlayback by playerViewModel.stablePlayerState.collectAsStateWithLifecycle()
         val currentSong = selectedSongForInfo
         val isFavorite = remember(currentSong?.id, favoriteSongIds) {
             derivedStateOf {
@@ -690,6 +761,10 @@ fun SearchScreen(
         if (currentSong != null) {
             SongInfoBottomSheet(
                 song = currentSong,
+                isShuffleEnabled = sheetPlayback.isShuffleEnabled,
+                repeatMode = sheetPlayback.repeatMode,
+                onToggleShuffle = { playerViewModel.toggleShuffle() },
+                onCycleRepeat = { playerViewModel.cycleRepeatMode() },
                 isFavorite = isFavorite,
                 removeFromListTrigger = removeFromListTrigger,
                 onToggleFavorite = {
@@ -697,16 +772,22 @@ fun SearchScreen(
                 },
                 onDismiss = { showSongInfoBottomSheet = false },
                 onPlaySong = {
-                    playerViewModel.showAndPlaySong(currentSong)
+                    if (currentSong.id.startsWith("youtube:")) playerViewModel.playOnlineRadio(currentSong)
+                    else playerViewModel.showAndPlaySong(currentSong)
+                    showSongInfoBottomSheet = false
                 },
                 onAddToQueue = {
                     playerViewModel.addSongToQueue(currentSong)
+                    showSongInfoBottomSheet = false
                 },
                 onAddNextToQueue = {
                     playerViewModel.addSongNextToQueue(currentSong)
+                    showSongInfoBottomSheet = false
                 },
                 onAddToPlayList = {
-                    showPlaylistBottomSheet = true;
+                    showSongInfoBottomSheet = false
+                    playlistSheetSongs = listOf(currentSong)
+                    showPlaylistBottomSheet = true
                 },
                 onDeleteFromDevice = playerViewModel::deleteFromDevice,
                 onNavigateToAlbum = {
@@ -717,10 +798,14 @@ fun SearchScreen(
                     showSongInfoBottomSheet = false
                 },
                 onNavigateToArtist = {
+                    if (currentSong.id.startsWith("youtube:")) {
+                        searchQuery = currentSong.artist
+                    } else {
                     navController.navigateSafelyReplacing(
                         route = Screen.ArtistDetail.createRoute(currentSong.artistId),
                         patternToPop = Screen.ArtistDetail.route
                     )
+                    }
                     showSongInfoBottomSheet = false
                 },
                 onNavigateToArtistById = { artistId ->
@@ -1091,12 +1176,14 @@ fun SearchResultsList(
     getAlbumSelectionIndex: (Long) -> Int? = { null },
     onPlaylistLongPress: (Playlist) -> Unit = {},
     onPlaylistSelectionToggle: (Playlist) -> Unit = {},
-    getPlaylistSelectionIndex: (String) -> Int? = { null }
+    getPlaylistSelectionIndex: (String) -> Int? = { null },
+    onlineCollections: List<OnlineSearchCollection> = emptyList(),
+    onOpenOnlineCollection: (HomeFeedItem) -> Unit = {}
 ) {
     val localDensity = LocalDensity.current
     val playerStableState by playerViewModel.stablePlayerState.collectAsStateWithLifecycle()
 
-    if (results.isEmpty()) {
+    if (results.isEmpty() && onlineCollections.isEmpty()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1140,7 +1227,8 @@ fun SearchResultsList(
             } else {
                 listOf(song)
             }
-            playerViewModel.showAndPlaySong(song, playbackQueue, searchQueueName)
+            if (song.id.startsWith("youtube:")) playerViewModel.playOnlineRadio(song)
+            else playerViewModel.showAndPlaySong(song, playbackQueue, searchQueueName)
             onItemSelected()
         }
     }
@@ -1172,7 +1260,8 @@ fun SearchResultsList(
         sectionOrder.forEach { filterType ->
             val itemsForSection = groupedResults[filterType] ?: emptyList()
 
-            if (itemsForSection.isNotEmpty()) {
+            val onlineItems = onlineCollections.filter { it.type == filterType }
+            if (itemsForSection.isNotEmpty() || onlineItems.isNotEmpty()) {
                 item(key = "header_${filterType.name}") {
                     SearchResultSectionHeader(
                         title = when (filterType) {
@@ -1185,6 +1274,9 @@ fun SearchResultsList(
                     )
                 }
 
+                items(onlineItems, key = { "online:${it.item.key}" }) { result ->
+                    HomeCollectionRow(result.item, onOpenOnlineCollection)
+                }
                 items(
                     count = itemsForSection.size,
                     key = { index ->

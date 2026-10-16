@@ -102,6 +102,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.isGranted
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.theveloper.pixelplay.data.github.GitHubAnnouncementPropertiesService
@@ -263,18 +264,20 @@ class MainActivity : ComponentActivity() {
             @OptIn(ExperimentalPermissionsApi::class)
             val permissionState = rememberMultiplePermissionsState(permissions = permissions)
             // Determine if we need to show Setup based on completion OR missing permissions
-            val permissionsValid = permissionState.allPermissionsGranted
+            val permissionsValid = permissionState.permissions
+                .filter { it.permission != Manifest.permission.POST_NOTIFICATIONS }
+                .all { it.status.isGranted }
             val showSetupScreen = remember(isSetupComplete, permissionsValid, isBenchmarkMode) {
                 when {
                     isBenchmarkMode -> false
                     isSetupComplete == null -> null
-                    else -> !isSetupComplete!! || !permissionsValid
+                    else -> !isSetupComplete!!
                 }
             }
 
             // Sync Trigger: When we are NOT showing setup (meaning permissions are good and setup is done)
-            LaunchedEffect(showSetupScreen) {
-                if (showSetupScreen == false) {
+            LaunchedEffect(showSetupScreen, permissionsValid) {
+                if (showSetupScreen == false && permissionsValid) {
                      LogUtils.i(this, "Setup complete/skipped and permissions valid. Starting sync.")
                      mainViewModel.startSync()
                 }
@@ -1128,9 +1131,14 @@ class MainActivity : ComponentActivity() {
         }
 
         val sessionToken = SessionToken(this, ComponentName(this, MusicService::class.java))
-        mediaControllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
-        mediaControllerFuture?.addListener({
-        }, MoreExecutors.directExecutor())
+        val releaseConnection = MusicService.beginAppControllerConnection()
+        try {
+            mediaControllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
+            mediaControllerFuture?.addListener(releaseConnection, MoreExecutors.directExecutor())
+        } catch (failure: Throwable) {
+            releaseConnection.run()
+            throw failure
+        }
     }
 
     override fun onStop() {

@@ -647,6 +647,15 @@ class MediaControllerSyncStateHolder @Inject constructor(
                     }
                 }
             }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                bufferingDebounceJob?.cancel()
+                playbackDispatchStateHolder.clearPreparingSongIfMatching(playerCtrl.currentMediaItem?.mediaId)
+                playbackStateHolder.stopProgressUpdates()
+                playbackStateHolder.updateStablePlayerState {
+                    it.copy(isPlaying = false, isBuffering = false, playWhenReady = false)
+                }
+            }
         })
     }
 

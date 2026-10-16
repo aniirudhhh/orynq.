@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### orynq. — 2026-10-14
+- Online Daily Mix uses qualified listening sessions, related-song recommendations, daily caching, and manual refresh.
+- YouTube Music streaming, song-only search, and related-song radio from Home and Search.
+- In-app YouTube Music account connection, encrypted sessions, and personalized feeds.
+- Pull-to-refresh requests a fresh YouTube Music Home feed immediately.
+- Featured Home card rotation every 15 seconds; list refresh on return after 30 minutes.
+- Search-style Home rows, higher-resolution artwork, and improved online lyrics matching.
+- Prefer square YouTube Music artwork; preserve signed crops and match video entries to official song covers when metadata agrees.
+- Three-step onboarding and a minimal branded header.
+- Updated first-install highlights and in-app changelog; simplified About without maintainer or contributor listings.
+
+
 ## [0.7.5-beta] - 2026-06-13
 
 ### Added

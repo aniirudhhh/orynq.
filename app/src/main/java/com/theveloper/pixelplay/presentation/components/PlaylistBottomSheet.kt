@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -70,6 +71,8 @@ fun PlaylistBottomSheet(
     val internalStorageText = stringResource(R.string.playlist_sheet_internal_storage)
 
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
+    var isCreatingPlaylist by remember { mutableStateOf(false) }
+    var playlistCreationError by remember { mutableStateOf<String?>(null) }
 
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -96,6 +99,16 @@ fun PlaylistBottomSheet(
                 filteredPlaylists.forEach {
                     put(it.id, false)
                 }
+            }
+        }
+    }
+
+    // A new screen's ViewModel can publish its first playlists after the picker opens.
+    // Seed only newly arriving entries so live updates never overwrite the user's edits.
+    LaunchedEffect(playlistUiState.playlists, songs) {
+        playlistUiState.playlists.forEach { playlist ->
+            if (!selectedPlaylists.containsKey(playlist.id)) {
+                selectedPlaylists[playlist.id] = songs.singleOrNull()?.id?.let { it in playlist.songIds } ?: false
             }
         }
     }
@@ -169,6 +182,7 @@ fun PlaylistBottomSheet(
                     ),
                     //currentPage = pagerState.currentPage,
                     onMainActionClick = {
+                        playlistCreationError = null
                         showCreatePlaylistDialog = true
                     },
                     iconRotation = 0f,
@@ -202,12 +216,25 @@ fun PlaylistBottomSheet(
                 if (showCreatePlaylistDialog) {
                     CreatePlaylistDialogRedesigned(
                         onDismiss = { showCreatePlaylistDialog = false },
+                        isSaving = isCreatingPlaylist,
+                        error = playlistCreationError,
+                        selectedSongCount = songs.distinctBy { it.id }.size,
                         onCreate = { name ->
-                            // Pass all selected songs to the new playlist
-                            playlistViewModel.createPlaylist(name, songIds = songs.map { it.id })
-                            showCreatePlaylistDialog = false
-                            onDismiss() // Close sheet after creation + add
-                            playerViewModel.sendToast(playlistCreatedAndSongsAddedMessage)
+                            if (!isCreatingPlaylist) {
+                                isCreatingPlaylist = true
+                                playlistCreationError = null
+                                playlistViewModel.createPlaylistWithSelectedSongs(name, songs,
+                                    onCreated = {
+                                        isCreatingPlaylist = false
+                                        showCreatePlaylistDialog = false
+                                        playerViewModel.sendToast(playlistCreatedAndSongsAddedMessage)
+                                        onDismiss()
+                                    },
+                                    onFailure = { message ->
+                                        isCreatingPlaylist = false
+                                        playlistCreationError = message
+                                    })
+                            }
                         },
                         onGenerateClick = {
                             showCreatePlaylistDialog = false
@@ -232,6 +259,7 @@ fun PlaylistBottomSheet(
                 onClick = {
                     if (!isAnyPlaylistSelected) return@MediumExtendedFloatingActionButton
 
+                    songs.forEach(playerViewModel::retainOnlineSongForPlaylist)
                     if (songs.size == 1) {
                          playlistViewModel.addOrRemoveSongFromPlaylists(
                             songs.first().id,

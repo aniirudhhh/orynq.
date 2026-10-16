@@ -168,6 +168,8 @@ class MusicService : MediaLibraryService() {
     @Inject
     lateinit var listeningStatsTracker: ListeningStatsTracker
     @Inject
+    lateinit var validatedInternet: com.theveloper.pixelplay.data.network.ValidatedInternet
+    @Inject
     @AppScope
     lateinit var appScope: CoroutineScope
 
@@ -181,6 +183,26 @@ class MusicService : MediaLibraryService() {
             scope = serviceScope,
             currentSessionMediaItem = { mediaSession?.player?.currentMediaItem },
         )
+    }
+
+    private val onlinePlaybackRecovery by lazy {
+        com.theveloper.pixelplay.data.service.player.OnlinePlaybackRecovery(
+            scope = serviceScope, online = validatedInternet.online,
+            playback = {
+                val player = mediaSession?.player ?: engine.masterPlayer
+                com.theveloper.pixelplay.data.service.player.RecoveryPlayback(
+                    mediaId = player.currentMediaItem?.mediaId, positionMs = player.currentPosition,
+                    wantsPlay = player.playWhenReady, playing = player.isPlaying,
+                    localPlayer = player === engine.masterPlayer)
+            }, retry = { saved ->
+                val player = mediaSession?.player ?: engine.masterPlayer
+                if (player === engine.masterPlayer && player.currentMediaItem?.mediaId == saved.mediaId && player.playWhenReady) {
+                    player.seekTo(saved.positionMs)
+                    player.prepare()
+                }
+            }, expired = {
+                android.widget.Toast.makeText(this, getString(R.string.online_playback_retry), android.widget.Toast.LENGTH_LONG).show()
+            })
     }
 
     private var favoriteSongIds = emptySet<String>()
@@ -269,6 +291,15 @@ class MusicService : MediaLibraryService() {
         private const val DEFERRED_SERVICE_STARTUP_WORK_DELAY_MS = 1_000L
         private const val PAUSED_RESTORE_PREPARE_QUEUE_LIMIT = 50
         private val pendingMediaButtonForegroundStarts = AtomicInteger(0)
+        private val pendingAppControllerConnections = AtomicInteger(0)
+
+        fun beginAppControllerConnection(): Runnable {
+            pendingAppControllerConnections.incrementAndGet()
+            val released = java.util.concurrent.atomic.AtomicBoolean(false)
+            return Runnable {
+                if (released.compareAndSet(false, true)) pendingAppControllerConnections.decrementAndGet()
+            }
+        }
 
         private const val APP_PACKAGE_PREFIX = "com.theveloper.pixelplay"
         private val BLOCKED_WEAR_CONTROLLER_PREFIXES = listOf(
@@ -416,11 +447,15 @@ class MusicService : MediaLibraryService() {
 
         // A media-button startForegroundService() can reach MusicService directly (not always
         // through PixelPlayMediaButtonReceiver), so the pending counter is only a hint. Promote
-        // immediately on cold start before super.onCreate(): Hilt injection and MediaLibraryService
+        // immediately on external cold starts before super.onCreate(): Hilt injection and MediaLibraryService
         // startup can otherwise consume Android's 5-second FGS deadline before onStartCommand()
-        // receives the media-button intent.
-        temporaryForegroundStartedInOnCreate =
-            consumePendingMediaButtonForegroundStart() || Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        // receives the media-button intent. An app controller bind is not an FGS start,
+        // so it must not create a placeholder notification just for opening the app.
+        temporaryForegroundStartedInOnCreate = shouldPromotePlaybackServiceOnCreate(
+            sdkInt = Build.VERSION.SDK_INT,
+            hasPendingExternalCommand = consumePendingMediaButtonForegroundStart(),
+            isConnectingFromApp = pendingAppControllerConnections.get() > 0
+        )
         if (temporaryForegroundStartedInOnCreate) {
             startTemporaryForegroundForCommand()
         }
@@ -430,6 +465,7 @@ class MusicService : MediaLibraryService() {
         
         // Ensure engine is ready (re-initialize if service was restarted)
         engine.initialize()
+        onlinePlaybackRecovery.playingChanged(engine.masterPlayer.isPlaying)
         replayGainProcessor.captureUserVolume(engine.masterPlayer.volume)
         syncLocalListeningStatsFromPlayer(engine.masterPlayer)
 
@@ -554,6 +590,12 @@ class MusicService : MediaLibraryService() {
         }
 
         val callback = object : MediaLibrarySession.Callback {
+            override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo,
+                playerCommand: Int): Int {
+                if (playerCommand == Player.COMMAND_STOP) onlinePlaybackRecovery.stopped()
+                return SessionResult.RESULT_SUCCESS
+            }
+
             override fun onConnect(
                 session: MediaSession,
                 controller: MediaSession.ControllerInfo
@@ -734,7 +776,7 @@ class MusicService : MediaLibraryService() {
                     .setMediaId(AutoMediaBrowseTree.ROOT_ID)
                     .setMediaMetadata(
                         androidx.media3.common.MediaMetadata.Builder()
-                            .setTitle("PixelPlay")
+                            .setTitle("orynq.")
                             .setIsBrowsable(true)
                             .setIsPlayable(false)
                             .setMediaType(androidx.media3.common.MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
@@ -1078,12 +1120,7 @@ class MusicService : MediaLibraryService() {
         val forcedForegroundStart =
             intent?.getBooleanExtra(EXTRA_FORCE_FOREGROUND_ON_START, false) == true
         val isMediaButtonIntent = intent?.action == Intent.ACTION_MEDIA_BUTTON
-        val needsTemporaryForeground = forcedForegroundStart ||
-            pendingMediaButtonForegroundStart ||
-            (isMediaButtonIntent &&
-                !startedTemporaryForegroundInOnCreate &&
-                !isServiceAlreadyForeground()) ||
-            when (intent?.action) {
+        val isPlaybackAction = when (intent?.action) {
                 PlayerActions.PLAY_PAUSE,
                 PlayerActions.NEXT,
                 PlayerActions.PREVIOUS,
@@ -1093,6 +1130,14 @@ class MusicService : MediaLibraryService() {
                 PlayerActions.REPEAT -> true
                 else -> false
             }
+        val needsTemporaryForeground = shouldShowTemporaryPlaybackNotification(
+            alreadyForeground = isServiceAlreadyForeground(),
+            forcedForegroundStart = forcedForegroundStart,
+            pendingExternalCommand = pendingMediaButtonForegroundStart,
+            mediaButtonIntent = isMediaButtonIntent,
+            startedDuringCreate = startedTemporaryForegroundInOnCreate,
+            playbackAction = isPlaybackAction
+        )
         if (needsTemporaryForeground && !startedTemporaryForegroundInOnCreate) {
             startTemporaryForegroundForCommand()
         }
@@ -1259,6 +1304,7 @@ class MusicService : MediaLibraryService() {
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            onlinePlaybackRecovery.playingChanged(isPlaying)
             val player = mediaSession?.player ?: engine.masterPlayer
             Timber.tag(TAG).d("onIsPlayingChanged: $isPlaying. Duration: ${player.duration}, Seekable: ${player.isCurrentMediaItemSeekable}")
             // Surface playback state to background workers so they can defer
@@ -1290,6 +1336,7 @@ class MusicService : MediaLibraryService() {
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            onlinePlaybackRecovery.intentChanged(playWhenReady)
             when {
                 playWhenReady -> clearHeadsetReconnectResume()
                 !resumeOnHeadsetReconnectEnabled -> clearHeadsetReconnectResume()
@@ -1314,6 +1361,7 @@ class MusicService : MediaLibraryService() {
         override fun onPlaybackStateChanged(playbackState: Int) {
             Timber.tag(TAG).d("Playback state changed: $playbackState")
             if (playbackState == Player.STATE_ENDED) {
+                onlinePlaybackRecovery.stopped()
                 listeningStatsTracker.finalizeCurrentSession()
                 val mediaItem = (mediaSession?.player ?: engine.masterPlayer).currentMediaItem
                 getNavidromeId(mediaItem)?.let { navidromeId ->
@@ -1384,6 +1432,7 @@ class MusicService : MediaLibraryService() {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            onlinePlaybackRecovery.trackChanged()
             syncLocalListeningStatsFromPlayer(mediaSession?.player ?: engine.masterPlayer, forceNewSession = true)
             if (isNavidromeMediaItem(mediaItem)) {
                 reportNavidromePlayback("starting")
@@ -1455,6 +1504,17 @@ class MusicService : MediaLibraryService() {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            val taggedNetworkFailure = generateSequence(error as Throwable) { it.cause }.take(12)
+                .filterIsInstance<com.theveloper.pixelplay.data.youtube.YouTubeAudioIOException>().any { it.networkFailure }
+            val recoverable = taggedNetworkFailure || error.errorCode in setOf(
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) ||
+                (!validatedInternet.online.value && error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
+            if (onlinePlaybackRecovery.failed(recoverable)) {
+                if (!validatedInternet.online.value) android.widget.Toast.makeText(this@MusicService,
+                    getString(R.string.online_playback_waiting), android.widget.Toast.LENGTH_SHORT).show()
+                return
+            }
             Timber.tag(TAG).e(error, "Error en el reproductor: ")
             serviceScope.launch {
                 val currentMediaItem = mediaSession?.player?.currentMediaItem
@@ -1491,6 +1551,7 @@ class MusicService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = mediaSession
 
     override fun onDestroy() {
+        onlinePlaybackRecovery.close()
         PlaybackActivityTracker.setPlaybackActive(false)
         listeningStatsTracker.finalizeCurrentSession(forceSynchronousPersistence = true)
         reportNavidromePlayback("stopped")
@@ -2497,6 +2558,7 @@ class MusicService : MediaLibraryService() {
             "Stopping playback and unloading service. reason=%s",
             reason
         )
+        onlinePlaybackRecovery.stopped()
         isPlaybackUnloadInProgress = true
         followUpMediaSessionUiRefreshJob?.cancel()
         mediaSessionButtonRefreshJob?.cancel()

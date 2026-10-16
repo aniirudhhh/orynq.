@@ -25,6 +25,11 @@ import com.theveloper.pixelplay.utils.LyricsUtils
 import com.theveloper.pixelplay.utils.MultiLangRomanizer
 import com.theveloper.pixelplay.utils.NetworkRetryUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
+import com.theveloper.pixelplay.data.youtube.YouTubeRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,6 +58,13 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+
+internal fun lyricsCacheFileName(songId: String): String {
+    if (songId.matches(Regex("[0-9]+"))) return "$songId.json"
+    val hash = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(songId.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    return "$hash.json"
+}
 
 private val EMBEDDED_LYRICS_KEYS = listOf("LYRICS", "SYNCEDLYRICS", "TTML", "UNSYNCEDLYRICS")
 
@@ -98,7 +110,8 @@ private data class RemoteSearchStrategy(
 
 private data class RemoteSearchBatch(
     val strategyName: String,
-    val responses: List<LrcLibResponse>
+    val responses: List<LrcLibResponse>,
+    val failure: Throwable? = null
 )
 
 private enum class RemoteLyricsMatchMode {
@@ -116,7 +129,8 @@ class LyricsRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val lrcLibApiService: LrcLibApiService,
     private val lyricsDao: com.theveloper.pixelplay.data.database.LyricsDao,
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val youtube: YouTubeRepository? = null
 ) : LyricsRepository {
 
 
@@ -236,43 +250,19 @@ class LyricsRepositoryImpl @Inject constructor(
     ): List<LrcLibResponse> = coroutineScope {
         if (strategies.isEmpty()) return@coroutineScope emptyList()
 
-        val channel = Channel<RemoteSearchBatch>(capacity = strategies.size)
-        val jobs = strategies.map { strategy ->
-            launch {
-                val responses = runCatching {
-                    withNetworkRetry(operationName = "lrclib_strategy:${strategy.name}") {
+        val batches = strategies.map { strategy ->
+            async {
+                try {
+                    val responses = withNetworkRetry(operationName = "lrclib_strategy:${strategy.name}") {
                         strategy.request()
-                    }
-                }.getOrElse { error ->
-                    Log.d(
-                        TAG,
-                        "Strategy ${strategy.name} failed after retries: ${error.message}"
-                    )
-                    null
-                }
-                    ?.toList()
-                    .orEmpty()
-                channel.trySend(
-                    RemoteSearchBatch(
-                        strategyName = strategy.name,
-                        responses = responses
-                    )
-                )
+                    }.orEmpty().toList()
+                    RemoteSearchBatch(strategy.name, responses)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (failure: Exception) { RemoteSearchBatch(strategy.name, emptyList(), failure) }
             }
-        }
-
-        repeat(strategies.size) {
-            val batch = channel.receive()
-            if (batch.responses.isNotEmpty()) {
-                Log.d(TAG, "Fast search hit from strategy: ${batch.strategyName} (${batch.responses.size} results)")
-                jobs.forEach { it.cancel() }
-                channel.close()
-                return@coroutineScope batch.responses.distinctBy { it.id }
-            }
-        }
-
-        channel.close()
-        emptyList()
+        }.awaitAll()
+        if (batches.all { it.failure != null }) throw batches.first().failure!!
+        batches.flatMap { it.responses }.distinctBy { it.id }
     }
 
     private suspend fun <T> withNetworkRetry(
@@ -442,6 +432,8 @@ class LyricsRepositoryImpl @Inject constructor(
                     
                     return@withContext lyrics
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Error fetching from source ${index + 1}: ${e.message}")
                 // Continue to next source
@@ -463,7 +455,28 @@ class LyricsRepositoryImpl @Inject constructor(
     /**
      * Fetches lyrics from LRCLIB API with rate limiting (matching Rhythm)
      */
-    private suspend fun fetchLyricsFromAPI(song: Song): Lyrics? = withContext(Dispatchers.IO) {
+    private suspend fun youtubeFallback(song: Song): Pair<Lyrics, String>? {
+        val videoId = song.id.removePrefix("youtube:").takeIf {
+            song.id.startsWith("youtube:") && Regex("[A-Za-z0-9_-]{11}").matches(it)
+        } ?: return null
+        return try {
+            val raw = withTimeoutOrNull(8_000) { youtube?.songLyrics(videoId) } ?: return null
+            val lyrics = LyricsUtils.parseLyrics(raw).copy(areFromRemote = true)
+            if (!lyrics.isValid()) return null
+            lyricsCache.put(generateCacheKey(song.id), lyrics)
+            saveLocalLyricsJson(song, lyrics)
+            lyrics to raw
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
+    }
+
+    private suspend fun fetchLyricsFromAPI(song: Song): Lyrics? {
+        val primary = withTimeoutOrNull(12_000) { fetchLrcLibLyrics(song) }
+        coroutineContext.ensureActive()
+        return primary ?: youtubeFallback(song)?.first
+    }
+
+    private suspend fun fetchLrcLibLyrics(song: Song): Lyrics? = withContext(Dispatchers.IO) {
         val isNetease = isNeteaseSong(song)
 
         if (isNetease) {
@@ -599,7 +612,9 @@ class LyricsRepositoryImpl @Inject constructor(
             }
 
             return@withContext null
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             Log.e(TAG, "LRCLIB lyrics fetch failed: ${e.message}", e)
             return@withContext null
         }
@@ -617,7 +632,6 @@ class LyricsRepositoryImpl @Inject constructor(
         mode: RemoteLyricsMatchMode
     ): List<RemoteLyricsMatch> {
         val songDurationSeconds = song.duration / 1000.0
-        if (songDurationSeconds <= 0.0) return emptyList()
 
         return responses
             .mapNotNull { response ->
@@ -646,13 +660,16 @@ class LyricsRepositoryImpl @Inject constructor(
         if (!variantDescriptorsCompatible(song, response)) return null
 
         val hasSynced = hasSyncedLyrics(response)
-        val durationTolerance = remoteDurationToleranceSeconds(songDurationSeconds, hasSynced, mode)
-        val durationDiff = abs(response.duration - songDurationSeconds)
-        if (durationDiff > durationTolerance) return null
+        val durationKnown = songDurationSeconds > 0.0
+        val durationTolerance = if (durationKnown) remoteDurationToleranceSeconds(songDurationSeconds, hasSynced, mode) else 0.0
+        val durationDiff = if (durationKnown) abs(response.duration - songDurationSeconds) else 0.0
+        if (durationKnown && durationDiff > durationTolerance) return null
 
         val titleScore = titleMatchScore(song.title, response.name, mode) ?: return null
         val artistScore = artistMatchScore(song.displayArtist, response.artistName)
         if (!isUnknownArtist(song.displayArtist) && artistScore == null) return null
+        // Online Home cards may omit duration: require strong title AND artist evidence instead.
+        if (!durationKnown && (isUnknownArtist(song.displayArtist) || artistScore == null || titleScore < 54)) return null
 
         val durationScore = (durationTolerance - durationDiff).coerceAtLeast(0.0).toInt()
         val syncedScore = if (hasSynced) 10 else 0
@@ -903,7 +920,9 @@ class LyricsRepositoryImpl @Inject constructor(
             val parsed = LyricsUtils.parseLyrics(lrc)
             if (!parsed.isValid()) return@withContext null
             return@withContext parsed.copy(areFromRemote = true)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             Log.w(TAG, "AMLLDB fetch failed for $neteaseSongId: ${e.message}")
             return@withContext null
         }
@@ -1028,7 +1047,9 @@ class LyricsRepositoryImpl @Inject constructor(
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             Log.e(TAG, "Error searching for local lyrics file", e)
         }
         return@withContext null
@@ -1046,7 +1067,7 @@ class LyricsRepositoryImpl @Inject constructor(
      */
     private fun saveLocalLyricsJson(song: Song, lyrics: Lyrics) {
         try {
-            val fileName = "${song.id}.json"
+            val fileName = lyricsCacheFileName(song.id)
             val lyricsDir = File(context.filesDir, "lyrics")
             lyricsDir.mkdirs()
 
@@ -1064,7 +1085,9 @@ class LyricsRepositoryImpl @Inject constructor(
             val json = gson.toJson(lyricsData)
             file.writeText(json)
             Log.d(TAG, "Saved lyrics to JSON cache: ${file.absolutePath}")
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             Log.e(TAG, "Error saving lyrics to JSON cache: ${e.message}", e)
         }
     }
@@ -1103,7 +1126,9 @@ class LyricsRepositoryImpl @Inject constructor(
                     return parsed
                 }
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             Log.e(TAG, "Error reading JSON cache: ${e.message}", e)
         }
         return null
@@ -1157,7 +1182,7 @@ class LyricsRepositoryImpl @Inject constructor(
      */
     private suspend fun loadEmbeddedLyricsFromMetadata(song: Song): Lyrics? = withContext(Dispatchers.IO) {
         // Skip embedded lyrics for Telegram songs (not supported yet/streamed)
-        if (song.contentUriString.startsWith("telegram://") || song.contentUriString.isEmpty()) {
+        if (song.contentUriString.startsWith("telegram://") || song.contentUriString.startsWith("youtube://") || song.contentUriString.isEmpty()) {
             return@withContext null
         }
 
@@ -1186,7 +1211,9 @@ class LyricsRepositoryImpl @Inject constructor(
             } finally {
                 tempFile.delete()
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             LogUtils.e(this@LyricsRepositoryImpl, e, "Error reading lyrics from file metadata")
             null
         }
@@ -1259,9 +1286,12 @@ class LyricsRepositoryImpl @Inject constructor(
     }
 
     private fun readLyricsJsonCache(song: Song): LyricsData? {
-        val fileName = "${song.id}.json"
-        val file = File(context.filesDir, "lyrics/$fileName")
-        if (!file.exists()) return null
+        val fileName = lyricsCacheFileName(song.id)
+        val current = File(context.filesDir, "lyrics/$fileName")
+        // Read existing Android caches as well; new filenames are portable and path-safe.
+        val legacy = song.id.takeIf { '/' !in it && '\\' !in it && it != "." && it != ".." }
+            ?.let { File(context.filesDir, "lyrics/$it.json") }
+        val file = current.takeIf { it.exists() } ?: legacy?.takeIf { it.exists() } ?: return null
 
         val json = file.readText()
         return gson.fromJson(json, LyricsData::class.java)
@@ -1270,6 +1300,14 @@ class LyricsRepositoryImpl @Inject constructor(
     // ========== Original methods (kept for backward compatibility) ==========
 
     override suspend fun fetchFromRemote(song: Song): Result<Pair<Lyrics, String>> = withContext(Dispatchers.IO) {
+        val primary = withTimeoutOrNull(12_000) { fetchFromLrcLibRemote(song) }
+        coroutineContext.ensureActive()
+        if (primary?.isSuccess == true) return@withContext primary
+        youtubeFallback(song)?.let { return@withContext Result.success(it) }
+        primary ?: Result.failure(LyricsException(context.getString(R.string.lyrics_fetch_timeout)))
+    }
+
+    private suspend fun fetchFromLrcLibRemote(song: Song): Result<Pair<Lyrics, String>> = withContext(Dispatchers.IO) {
         try {
             LogUtils.d(this@LyricsRepositoryImpl, "Fetching lyrics from remote for: ${song.title}")
 
@@ -1357,7 +1395,9 @@ class LyricsRepositoryImpl @Inject constructor(
                 LogUtils.d(this@LyricsRepositoryImpl, "No lyrics found remotely for: ${song.title}")
                 Result.failure(NoLyricsFoundException())
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             LogUtils.e(this@LyricsRepositoryImpl, e, "Error fetching lyrics from remote")
             when {
                 e is HttpException && e.code() == 404 -> Result.failure(NoLyricsFoundException())
@@ -1415,7 +1455,7 @@ class LyricsRepositoryImpl @Inject constructor(
                 )
                 val results = rankedMatches.mapNotNull { match ->
                     val response = match.response
-                    val rawLyrics = response.syncedLyrics ?: response.plainLyrics ?: return@mapNotNull null
+                    val rawLyrics = response.syncedLyrics?.takeIf { it.isNotBlank() } ?: response.plainLyrics?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                     val parsedLyrics = LyricsUtils.parseLyrics(rawLyrics).copy(areFromRemote = true)
                     if (!parsedLyrics.isValid()) {
                         LogUtils.w(this@LyricsRepositoryImpl, "Parsed lyrics are empty for: ${song.title}")
@@ -1438,7 +1478,10 @@ class LyricsRepositoryImpl @Inject constructor(
                 LogUtils.d(this@LyricsRepositoryImpl, "No lyrics found remotely for: ${song.title}")
                 Result.failure(NoLyricsFoundException(combinedQuery))
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             LogUtils.e(this@LyricsRepositoryImpl, e, "Error searching remote for lyrics")
             when {
                 e is SocketTimeoutException -> Result.failure(LyricsException(context.getString(R.string.lyrics_fetch_timeout), e))
@@ -1480,7 +1523,7 @@ class LyricsRepositoryImpl @Inject constructor(
             }
 
             val results = responses.mapNotNull { response ->
-                val rawLyrics = response.syncedLyrics ?: response.plainLyrics ?: return@mapNotNull null
+                val rawLyrics = response.syncedLyrics?.takeIf { it.isNotBlank() } ?: response.plainLyrics?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val parsed = LyricsUtils.parseLyrics(rawLyrics).copy(areFromRemote = true)
                 if (!parsed.isValid()) return@mapNotNull null
 
@@ -1492,7 +1535,9 @@ class LyricsRepositoryImpl @Inject constructor(
             } else {
                 Result.success(Pair(query, results))
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             LogUtils.e(this@LyricsRepositoryImpl, e, "Manual search failed")
             Result.failure(LyricsException(context.getString(R.string.lyrics_failed_to_search), e)
             )
@@ -1528,7 +1573,9 @@ class LyricsRepositoryImpl @Inject constructor(
         lyricsCache.remove(cacheKey)
         try {
             lyricsDao.deleteLyrics(songId)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             Log.w(TAG, "Error removing lyrics from DB for ID: $songId", e)
         }
         
@@ -1536,7 +1583,9 @@ class LyricsRepositoryImpl @Inject constructor(
         try {
             val file = File(context.filesDir, "lyrics/${songId}.json")
             if (file.exists()) file.delete()
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             Log.w(TAG, "Error deleting JSON cache: ${e.message}")
         }
     }
@@ -1552,7 +1601,9 @@ class LyricsRepositoryImpl @Inject constructor(
             if (lyricsDir.exists()) {
                 lyricsDir.listFiles()?.forEach { it.delete() }
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             Log.w(TAG, "Error clearing JSON cache: ${e.message}")
         }
     }
@@ -1638,13 +1689,17 @@ class LyricsRepositoryImpl @Inject constructor(
                                             )
                                             updatedCount.incrementAndGet()
                                             LogUtils.d(this@LyricsRepositoryImpl, "Auto-assigned lyrics from ${foundFile.name}")
-                                        } catch (e: Exception) {
+                                        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                                             Log.w(TAG, "Skipping DB update for ID in scanner: ${song.id}", e)
                                         }
                                     }
                                 }
                             }
-                        } catch (e: Exception) {
+                        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                             Log.w(TAG, "Error scanning lyrics for ${song.title}: ${e.message}")
                         }
                         
@@ -1684,7 +1739,9 @@ class LyricsRepositoryImpl @Inject constructor(
                 }
                 tempFile
             }
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
             LogUtils.e(this, e, "Error creating temp file from URI")
             null
         }

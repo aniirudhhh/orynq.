@@ -38,7 +38,7 @@ data class DebugPerformanceReport(
 
     /** Human-readable rendering for users who prefer text over JSON. */
     fun toPlainText(): String = buildString {
-        appendLine("PixelPlay performance report (schema v$schemaVersion)")
+        appendLine("orynq. performance report (schema v$schemaVersion)")
         appendLine("Generated: $generatedAtIso")
         appendLine()
 

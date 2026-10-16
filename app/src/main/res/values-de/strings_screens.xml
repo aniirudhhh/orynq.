@@ -13,7 +13,7 @@
     <string name="setup_beta_label">Beta</string>
     <string name="setup_intro_body">Richten wir alles ein.</string>
     <string name="setup_permission_media_title">Medienberechtigung</string>
-    <string name="setup_permission_media_description">PixelPlayer braucht Zugriff auf Audiodateien, um die Bibliothek aufzubauen.</string>
+    <string name="setup_permission_media_description">orynq. braucht Zugriff auf Audiodateien, um die Bibliothek aufzubauen.</string>
     <string name="setup_permission_granted">Berechtigung erteilt</string>
     <string name="setup_grant_media_permission">Medienberechtigung erteilen</string>
     <string name="setup_permission_notifications_title">Benachrichtigungen</string>
@@ -41,7 +41,7 @@
     <string name="setup_theme_title">App-Design</string>
     <string name="setup_theme_subtitle">Design wählen, bevor es losgeht.</string>
     <string name="setup_theme_dark_title">Dunkel</string>
-    <string name="setup_theme_dark_description">Das Standard-Dunkeldesign von PixelPlayer (Material 3 Expressiv).</string>
+    <string name="setup_theme_dark_description">Das Standard-Dunkeldesign von orynq. (Material 3 Expressiv).</string>
     <string name="setup_theme_light_title">Hell</string>
     <string name="setup_theme_light_description">Das helle Material 3 Expressiv-Design.</string>
     <string name="setup_theme_follow_title">System folgen</string>
@@ -66,10 +66,10 @@
     <string name="setup_customize_corner_radius">Eckenradius anpassen</string>
     <string name="setup_navbar_footer">Änderbar unter Einstellungen &gt; Darstellung &gt; NavBar-Stil.</string>
     <string name="setup_permission_alarms_title">Alarme &amp; Erinnerungen</string>
-    <string name="setup_permission_alarms_description">Empfohlen, wenn du den Sleep Timer nutzt – damit stoppt PixelPlayer pünktlich.</string>
+    <string name="setup_permission_alarms_description">Empfohlen, wenn du den Sleep Timer nutzt – damit stoppt orynq. pünktlich.</string>
     <string name="setup_grant_permission_generic">Berechtigung erteilen</string>
     <string name="setup_battery_optimization_title">Akku-Optimierung</string>
-    <string name="setup_battery_optimization_description">Manche Geräte beenden Apps im Hintergrund aggressiv. Akku-Optimierung für PixelPlayer deaktivieren, damit die Wiedergabe nicht unterbrochen wird.</string>
+    <string name="setup_battery_optimization_description">Manche Geräte beenden Apps im Hintergrund aggressiv. Akku-Optimierung für orynq. deaktivieren, damit die Wiedergabe nicht unterbrochen wird.</string>
     <string name="setup_disable_battery_optimization">Optimierung deaktivieren</string>
     <string name="setup_all_set_title">Alles bereit!</string>
     <string name="setup_all_set_body">Du kannst jetzt deine Musik genießen.</string>

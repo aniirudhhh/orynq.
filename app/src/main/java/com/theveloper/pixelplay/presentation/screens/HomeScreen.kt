@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,6 +39,7 @@ import androidx.compose.material3.LargeExtendedFloatingActionButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,6 +51,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +65,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -79,10 +88,10 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.theveloper.pixelplay.R
-import com.theveloper.pixelplay.data.model.Song
 import com.theveloper.pixelplay.data.preferences.CollagePattern
 import com.theveloper.pixelplay.presentation.components.AlbumArtCollage
 import com.theveloper.pixelplay.presentation.components.BetaInfoBottomSheet
@@ -105,6 +114,7 @@ import com.theveloper.pixelplay.presentation.model.collectRecentlyPlayedSongIds
 import com.theveloper.pixelplay.presentation.model.mapRecentlyPlayedSongs
 import com.theveloper.pixelplay.presentation.components.subcomps.PlayingEqIcon
 import com.theveloper.pixelplay.presentation.navigation.Screen
+import com.theveloper.pixelplay.data.model.Song
 import com.theveloper.pixelplay.presentation.components.StreamingProviderSheet
 import com.theveloper.pixelplay.presentation.telegram.auth.TelegramLoginActivity
 import com.theveloper.pixelplay.presentation.viewmodel.PlayerViewModel
@@ -120,7 +130,6 @@ import kotlinx.coroutines.launch
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 import androidx.compose.ui.res.stringResource
 
-private const val HomeLoadingPlaceholderMinDurationMillis = 1200L
 
 // Modern HomeScreen with collapsible top bar and staggered grid layout
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -137,6 +146,31 @@ fun HomeScreen(
     jellyfinViewModel: JellyfinDashboardViewModel = hiltViewModel(),
     onOpenSidebar: () -> Unit
 ) {
+    var songMenu by remember { mutableStateOf<com.theveloper.pixelplay.presentation.components.OnlineSongMenuRequest?>(null) }
+    val openSongMenu: (Song, () -> Unit) -> Unit = { song, play ->
+        songMenu = com.theveloper.pixelplay.presentation.components.OnlineSongMenuRequest(song, play)
+    }
+    val online: com.theveloper.pixelplay.presentation.youtube.OnlineHomeViewModel = hiltViewModel()
+    val onlineState by online.homeState.collectAsStateWithLifecycle()
+    val musicAccount by online.account.collectAsStateWithLifecycle()
+    val onlineCollection by online.collection.collectAsStateWithLifecycle()
+    val onlineSongs = remember(onlineState.tracks) { onlineState.tracks.map { it.asSong() }.toImmutableList() }
+    val quickPicksTitle = stringResource(R.string.home_feed_quick_picks)
+    val quickPicks = remember(onlineState.quickPicks, quickPicksTitle) {
+        onlineState.quickPicks.takeIf { it.isNotEmpty() }?.let { tracks ->
+            com.theveloper.pixelplay.data.youtube.HomeFeedShelf(
+                "orynq_quick_picks", quickPicksTitle, com.theveloper.pixelplay.data.youtube.HomeShelfLayout.ROWS,
+                tracks.map { com.theveloper.pixelplay.data.youtube.HomeFeedItem(it.title, it.artist, it.artwork, track = it) })
+        }
+    }
+    val remainingShelves = remember(onlineState.shelves) {
+        onlineState.shelves.filterNot { it.title.trim().equals("Quick picks", ignoreCase = true) }
+    }
+    val homeSnackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val hasCachedFeed = onlineState.tracks.isNotEmpty() || onlineState.shelves.isNotEmpty()
+    LaunchedEffect(onlineState.error) {
+        if (hasCachedFeed && onlineState.error != null) homeSnackbar.showSnackbar(onlineState.error.orEmpty())
+    }
     val context = LocalContext.current
     // DETECTAR MODO BENCHMARK
     val isBenchmarkMode = remember {
@@ -144,38 +178,27 @@ fun HomeScreen(
     }
     val statsViewModel: StatsViewModel = hiltViewModel()
     val settingsUiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+    val isUpdatingDailyMix by playerViewModel.isUpdatingDailyMix.collectAsStateWithLifecycle()
     val dailyMixSongs by playerViewModel.dailyMixSongs.collectAsStateWithLifecycle()
     val curatedYourMixSongs by playerViewModel.yourMixSongs.collectAsStateWithLifecycle()
     val homeMixPreviewSongs by playerViewModel.homeMixPreviewSongs.collectAsStateWithLifecycle()
     val playbackHistory by playerViewModel.playbackHistory.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
-
-    val usesFallbackHomeMix = remember(curatedYourMixSongs, dailyMixSongs) {
-        curatedYourMixSongs.isEmpty() && dailyMixSongs.isEmpty()
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            online.refreshHomeOnEntry()
+            try { kotlinx.coroutines.awaitCancellation() } finally { online.leaveHome() }
+        }
     }
-    val yourMixSongs = remember(curatedYourMixSongs, dailyMixSongs, homeMixPreviewSongs) {
+
+    val yourMixSongs = remember(onlineSongs, curatedYourMixSongs, dailyMixSongs, homeMixPreviewSongs) {
         when {
+            onlineSongs.isNotEmpty() -> onlineSongs
             curatedYourMixSongs.isNotEmpty() -> curatedYourMixSongs
             dailyMixSongs.isNotEmpty() -> dailyMixSongs
             else -> homeMixPreviewSongs
         }
     }
-    var homePlaceholderRefreshGeneration by rememberSaveable { mutableIntStateOf(0) }
-    var hasHomeLoadingMinimumElapsed by rememberSaveable(homePlaceholderRefreshGeneration) {
-        mutableStateOf(false)
-    }
-
-    LaunchedEffect(homePlaceholderRefreshGeneration, yourMixSongs.isEmpty()) {
-        if (yourMixSongs.isEmpty()) {
-            hasHomeLoadingMinimumElapsed = false
-            delay(HomeLoadingPlaceholderMinDurationMillis)
-            hasHomeLoadingMinimumElapsed = true
-        } else {
-            hasHomeLoadingMinimumElapsed = true
-        }
-    }
-
-    val shouldShowYourMixLoadingPlaceholder = yourMixSongs.isEmpty() && !hasHomeLoadingMinimumElapsed
     val recentSongIds = remember(playbackHistory) {
         collectRecentlyPlayedSongIds(
             playbackHistory = playbackHistory,
@@ -225,7 +248,7 @@ fun HomeScreen(
     }
 
     ReportDrawnWhen {
-        yourMixSongs.isNotEmpty() || hasHomeLoadingMinimumElapsed || isBenchmarkMode
+        !onlineState.isInitialLoading || isBenchmarkMode
     }
 
     val yourMixSong: String = "Today's Mix for you"
@@ -251,6 +274,7 @@ fun HomeScreen(
     var showChangelogBottomSheet by remember { mutableStateOf(false) }
     var showBetaInfoBottomSheet by remember { mutableStateOf(false) }
     var showStreamingProviderSheet by remember { mutableStateOf(false) }
+    var showYouTubeConnection by remember { mutableStateOf(false) }
     var cleanInstallDisclaimerDismissedThisSession by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val betaSheetState = rememberModalBottomSheetState()
@@ -260,6 +284,8 @@ fun HomeScreen(
     val homeStatsOverview by statsViewModel.homeOverview.collectAsStateWithLifecycle()
 
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    var feedBounds by remember { mutableStateOf(Rect.Zero) }
+    val playerSheetState by playerViewModel.sheetState.collectAsStateWithLifecycle()
     val density = LocalDensity.current
     val scrollThresholdPx = remember(density) { with(density) { 180.dp.toPx() } }
     val isScrolledPastThreshold = remember {
@@ -269,6 +295,7 @@ fun HomeScreen(
     // Persist the scroll position across navigation away/back. The Stats card and other
     // conditional sections can shift indices while data re-emits when returning, which
     // would otherwise leave the list scrolled to the wrong place or jump to the top.
+    var savedScrollKey by rememberSaveable { mutableStateOf<String?>(null) }
     var savedScrollIndex by rememberSaveable { mutableIntStateOf(0) }
     var savedScrollOffset by rememberSaveable { mutableIntStateOf(0) }
     var needsScrollRestore by rememberSaveable { mutableStateOf(false) }
@@ -276,6 +303,7 @@ fun HomeScreen(
     DisposableEffect(lifecycleOwner, listState) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
+                savedScrollKey = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key as? String
                 savedScrollIndex = listState.firstVisibleItemIndex
                 savedScrollOffset = listState.firstVisibleItemScrollOffset
                 needsScrollRestore = true
@@ -287,15 +315,28 @@ fun HomeScreen(
 
     LaunchedEffect(
         needsScrollRestore,
+        onlineState.contentVersion,
+        onlineState.isInitialLoading,
         yourMixSongs.isNotEmpty(),
         dailyMixSongs.isNotEmpty(),
         recentlyPlayedSongs.size,
         homeStatsOverview
     ) {
-        if (!needsScrollRestore) return@LaunchedEffect
+        if (!needsScrollRestore || onlineState.isInitialLoading) return@LaunchedEffect
         val totalItems = listState.layoutInfo.totalItemsCount
         if (totalItems == 0) return@LaunchedEffect
-        val targetIndex = savedScrollIndex.coerceIn(0, (totalItems - 1).coerceAtLeast(0))
+        val itemKeys = buildList<String> {
+            if (onlineState.error != null && !hasCachedFeed) add("home_refresh_error")
+            if (quickPicks != null) add("home_quick_picks")
+            else if (onlineState.shelves.isEmpty()) addAll(yourMixSongs.map { it.id })
+            add(if (dailyMixSongs.isEmpty()) "daily_mix_empty" else "daily_mix_section")
+            addAll(remainingShelves.map { "feed:${it.id}" })
+            if (onlineState.continuation != null) add("home_feed_more")
+            if (recentlyPlayedSongs.size >= RecentlyPlayedSectionMinSongsToShow) add("recently_played_section")
+            if (homeStatsOverview != null) add("listening_stats_preview")
+        }
+        val anchorIndex = savedScrollKey?.let(itemKeys::indexOf) ?: -1
+        val targetIndex = (if (anchorIndex >= 0) anchorIndex else savedScrollIndex).coerceIn(0, (totalItems - 1).coerceAtLeast(0))
         listState.scrollToItem(targetIndex, savedScrollOffset)
         needsScrollRestore = false
     }
@@ -306,11 +347,24 @@ fun HomeScreen(
         settingsUiState.beta05CleanInstallDisclaimerDismissed == false &&
             !cleanInstallDisclaimerDismissedThisSession
 
+    val homeObscured = songMenu != null || onlineCollection != null || playerSheetState != com.theveloper.pixelplay.presentation.viewmodel.PlayerSheetState.COLLAPSED ||
+        showOptionsBottomSheet || showChangelogBottomSheet || showBetaInfoBottomSheet || showYouTubeConnection || shouldShowCleanInstallDisclaimer
+    val reservedBottom = with(density) { (paddingValuesParent.calculateBottomPadding() + bottomPadding).toPx() }
+    val exposureViewport = Rect(feedBounds.left, feedBounds.top, feedBounds.right,
+        (feedBounds.bottom - reservedBottom).coerceAtLeast(feedBounds.top))
+    LaunchedEffect(listState, homeObscured) {
+        snapshotFlow { Triple(listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0,
+            listState.isScrollInProgress, homeObscured) }.distinctUntilChanged().collect { (top, scrolling, blocked) ->
+            online.homeViewport(top, scrolling, blocked)
+        }
+    }
+
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
+            snackbarHost = { androidx.compose.material3.SnackbarHost(homeSnackbar) },
             topBar = {
                 HomeGradientTopBar(
                     onNavigationIconClick = {
@@ -323,104 +377,65 @@ fun HomeScreen(
                         showBetaInfoBottomSheet = true
                     },
                     onTelegramClick = {
-                         showStreamingProviderSheet = true
+                         showYouTubeConnection = true
                     },
                     onMenuClick = {
                         // onOpenSidebar() // Disabled
                     },
+                    musicAccountAvatar = musicAccount?.avatar,
+                    isMusicConnected = musicAccount != null && musicAccount?.needsReconnect != true,
                     isScrolled = isScrolledPastThreshold.value
                 )
             }
         ) { innerPadding ->
+            PullToRefreshBox(
+                isRefreshing = onlineState.isPullRefreshing,
+                onRefresh = { online.refreshHomeNow() },
+                modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())
+                    .pointerInput(online) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                online.homeTouching(event.changes.any { it.pressed })
+                            }
+                        }
+                    }
+            ) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
+                    .background(MaterialTheme.colorScheme.background)
+                    .onGloballyPositioned { feedBounds = it.boundsInWindow() },
                 contentPadding = PaddingValues(
-                    top = innerPadding.calculateTopPadding(),
+                    top = 0.dp,
                     bottom = paddingValuesParent.calculateBottomPadding()
                             + 38.dp + bottomPadding
                 ),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                if (yourMixSongs.isEmpty()) {
-                    item(
-                        key = "your_mix_placeholder",
-                        contentType = "your_mix_placeholder"
-                    ) {
-                        if (shouldShowYourMixLoadingPlaceholder) {
-                            YourMixLoadingPlaceholder()
-                        } else {
-                            YourMixEmptyPlaceholder(
-                                onRefresh = {
-                                    homePlaceholderRefreshGeneration++
-                                    settingsViewModel.refreshLibrary()
-                                    playerViewModel.forceUpdateDailyMix()
-                                }
-                            )
-                        }
-                    }
-                } else {
-                    item(
-                        key = "your_mix_header",
-                        contentType = "your_mix_header"
-                    ) {
-                        YourMixHeader(
-                            song = yourMixSong,
-                            isShuffleEnabled = isShuffleEnabled,
-                            onPlayShuffled = {
-                                if (usesFallbackHomeMix) {
-                                    playerViewModel.shuffleAllSongs(queueName = "Your Mix")
-                                } else {
-                                    playerViewModel.playSongsShuffled(
-                                        songsToPlay = yourMixSongs,
-                                        queueName = "Your Mix",
-                                        startAtZero = true,
-                                    )
-                                }
-                            }
-                        )
+                if (onlineState.isInitialLoading && yourMixSongs.isEmpty()) item(key = "home_initial_loading") {
+                    androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 20.dp))
+                }
+                if (onlineState.error != null && !hasCachedFeed) item(key = "home_refresh_error") {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(onlineState.error.orEmpty(), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.material3.TextButton(onClick = online::refreshHomeNow) { Text("Retry") }
                     }
                 }
-
-                // Collage
-                if (yourMixSongs.isNotEmpty()) {
-                    item(
-                        key = "album_art_collage",
-                        contentType = "album_art_collage"
-                    ) {
-                        val basePattern = settingsUiState.collagePattern
-                        val isAutoRotate = settingsUiState.collageAutoRotate
-                        val patterns = remember { CollagePattern.entries }
-
-                        val activePattern = if (isAutoRotate) {
-                            var rotationIndex by rememberSaveable { mutableIntStateOf(-1) }
-                            LaunchedEffect(Unit) { rotationIndex++ }
-                            remember(rotationIndex) {
-                                patterns[rotationIndex.coerceAtLeast(0) % patterns.size]
-                            }
-                        } else {
-                            basePattern
-                        }
-
-                        AlbumArtCollage(
-                            modifier = Modifier.fillMaxWidth(),
-                            songs = yourMixSongs,
-                            padding = 14.dp,
-                            height = 400.dp,
-                            pattern = activePattern,
-                            onSongClick = { song ->
-                                if (usesFallbackHomeMix) {
-                                    playerViewModel.showAndPlaySongFromLibrary(song, queueName = "Your Mix")
-                                } else {
-                                    playerViewModel.showAndPlaySong(song, yourMixSongs, "Your Mix")
-                                }
-                            }
-                        )
+                quickPicks?.let { shelf ->
+                    item(key = "home_quick_picks", contentType = "home_feed_shelf") {
+                        HomeFeedShelfView(shelf, playerViewModel, online::openCollection,
+                            onScrolling = online::homeShelfScrolling, onSeen = online::quickPickSeen,
+                            exposureEnabled = onlineState.visible && !homeObscured, viewport = exposureViewport,
+                            exposureVersion = onlineState.contentVersion, onSongMenu = openSongMenu)
                     }
                 }
-
+                if (quickPicks == null && onlineState.shelves.isEmpty()) {
+                    items(yourMixSongs, key = { it.id }) { song ->
+                        HomeCatalogSong(song, playerViewModel, yourMixSongs, onSongMenu = openSongMenu)
+                    }
+                }
                 // Daily Mix
                 if (dailyMixSongs.isNotEmpty()) {
                     item(
@@ -451,6 +466,35 @@ fun HomeScreen(
                             },
                             playerViewModel = playerViewModel
                         )
+                    }
+                }
+
+                if (dailyMixSongs.isEmpty()) item(key = "daily_mix_empty") {
+                    androidx.compose.material3.Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+                            .clickable { navController.navigateSafely(Screen.DailyMixScreen.route) },
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer
+                    ) {
+                        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.online_mix_title), style = MaterialTheme.typography.titleLarge)
+                            Text(stringResource(if (isUpdatingDailyMix) R.string.online_mix_building else R.string.online_mix_empty),
+                                style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+
+                items(remainingShelves, key = { "feed:${it.id}" }, contentType = { "home_feed_shelf" }) { shelf ->
+                    HomeFeedShelfView(shelf, playerViewModel, online::openCollection, onScrolling = online::homeShelfScrolling, onSongMenu = openSongMenu)
+                }
+                if (onlineState.continuation != null) item(key = "home_feed_more") {
+                    LaunchedEffect(onlineState.continuation) { online.loadMoreHome() }
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (onlineState.loadingMore) androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
+                        if (onlineState.moreError != null) Text(onlineState.moreError.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.material3.TextButton(onClick = online::loadMoreHome, enabled = !onlineState.loadingMore) {
+                            Text(stringResource(if (onlineState.loadingMore) R.string.home_feed_loading_more else R.string.home_feed_load_more))
+                        }
                     }
                 }
 
@@ -492,6 +536,7 @@ fun HomeScreen(
                     }
                 }
             }
+            }
         }
         Box(
             modifier = Modifier
@@ -511,6 +556,26 @@ fun HomeScreen(
         ) {
 
         }
+    }
+    onlineCollection?.let { collection ->
+        key(collection.item.key) {
+            HomeCollectionSheet(collection, playerViewModel, online::closeCollection, online::openCollection, online::loadMoreCollection, onSongMenu = { song, play ->
+                online.closeCollection()
+                openSongMenu(song, play)
+            })
+        }
+    }
+    songMenu?.let { request ->
+        com.theveloper.pixelplay.presentation.components.OnlineSongMenu(request, playerViewModel,
+            onDismiss = { songMenu = null }, onArtist = { song ->
+                if (song.id.startsWith("youtube:")) {
+                    playerViewModel.updateSearchQuery(song.artist)
+                    navController.navigateSafely(Screen.Search.route)
+                } else navController.navigateSafely(Screen.ArtistDetail.createRoute(song.artistId))
+            }, onAlbum = { navController.navigateSafely(Screen.AlbumDetail.createRoute(it.albumId)) },
+            onGenre = { song -> song.genre?.let {
+                navController.navigateSafely(Screen.GenreDetail.createRoute(java.net.URLEncoder.encode(it, "UTF-8")))
+            } })
     }
     if (showOptionsBottomSheet) {
         ModalBottomSheet(
@@ -547,6 +612,13 @@ fun HomeScreen(
         ) {
             BetaInfoBottomSheet()
         }
+    }
+    if (showYouTubeConnection) {
+        com.theveloper.pixelplay.presentation.youtube.YouTubeConnectionSheet(
+            viewModel = online,
+            onDismiss = { showYouTubeConnection = false },
+            onOtherServices = { showYouTubeConnection = false; showStreamingProviderSheet = true }
+        )
     }
     if (showStreamingProviderSheet) {
         val isNeteaseLoggedIn by neteaseViewModel.isLoggedIn.collectAsStateWithLifecycle()

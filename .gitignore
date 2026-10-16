@@ -49,3 +49,11 @@ markdown.xml
 **/.env
 **/.env.*
 !**/.env.example
+
+# Local online-player build output
+*.log
+/online-build.log
+/device-qa/
+/lyrics-test.log
+/release-build.log
+/home-feed-build.log

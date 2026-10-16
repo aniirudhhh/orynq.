@@ -99,24 +99,6 @@ fun SettingsScreen(
         settingsViewModel: SettingsViewModel = hiltViewModel()
 ) {
 
-    // Animation effects
-    val transitionState = remember { MutableTransitionState(false) }
-    LaunchedEffect(true) { transitionState.targetState = true }
-
-    val transition = rememberTransition(transitionState, label = "SettingsAppearTransition")
-
-    val contentAlpha by
-            transition.animateFloat(
-                    label = "ContentAlpha",
-                    transitionSpec = { tween(durationMillis = 500) }
-            ) { if (it) 1f else 0f }
-
-    val contentOffset by
-            transition.animateDp(
-                    label = "ContentOffset",
-                    transitionSpec = { tween(durationMillis = 400, easing = FastOutSlowInEasing) }
-            ) { if (it) 0.dp else 40.dp }
-
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
@@ -193,10 +175,7 @@ fun SettingsScreen(
 
     Box(
             modifier =
-                    Modifier.nestedScroll(nestedScrollConnection).fillMaxSize().graphicsLayer {
-                        alpha = contentAlpha
-                        translationY = contentOffset.toPx()
-                    }
+                    Modifier.nestedScroll(nestedScrollConnection).fillMaxSize()
     ) {
         val currentTopBarHeightDp = with(density) { topBarHeight.value.toDp() }
         LazyColumn(

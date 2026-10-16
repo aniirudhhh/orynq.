@@ -11,9 +11,8 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.first
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -46,7 +45,7 @@ class LyricsStateHolderTest {
     }
 
     @Test
-    fun fetchLyricsForSong_usesStoredLyricsWithoutRemoteFetch() {
+    fun fetchLyricsForSong_usesStoredLyricsWithoutRemoteFetch() = runTest {
         val musicRepository = mockk<MusicRepository>(relaxed = true)
         val userPreferencesRepository = mockk<UserPreferencesRepository>(relaxed = true)
         val songMetadataEditor = mockk<SongMetadataEditor>(relaxed = true)
@@ -55,7 +54,7 @@ class LyricsStateHolderTest {
             userPreferencesRepository = userPreferencesRepository,
             songMetadataEditor = songMetadataEditor
         )
-        val scope = TestScope(StandardTestDispatcher())
+        val scope = backgroundScope
         val callback = RecordingLyricsLoadCallback()
         val state = MutableStateFlow(StablePlayerState())
         val song = testSong(albumArtUriString = "content://art/song_art_1.jpg").copy(
@@ -71,7 +70,7 @@ class LyricsStateHolderTest {
             forcePickResults = false,
             sourcePreference = com.theveloper.pixelplay.data.model.LyricsSourcePreference.API_FIRST
         ) { "Lyrics already available" }
-        scope.advanceUntilIdle()
+        holder.searchUiState.first { it is LyricsSearchUiState.Success }
 
         assertThat(holder.searchUiState.value).isEqualTo(LyricsSearchUiState.Success(storedLyrics))
         coVerify(exactly = 1) { musicRepository.getStoredLyrics(song) }

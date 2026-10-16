@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="online_mix_title">Daily Mix</string>
+    <string name="online_mix_empty">Listen to an online song for at least 30 seconds, then play another song or stop playback. Your Daily Mix will combine familiar songs with related discoveries.</string>
+    <string name="online_mix_building">Building your Daily Mix…</string>
+    <string name="online_mix_refresh">Refresh Daily Mix</string>
+</resources>

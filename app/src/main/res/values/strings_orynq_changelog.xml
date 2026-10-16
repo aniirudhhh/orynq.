@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="orynq_welcome_badge">orynq.</string>
+    <string name="orynq_welcome_title">Your music, connected</string>
+    <string name="orynq_welcome_body">Stream and search YouTube Music songs. Connect your account from Home for a personalized feed, enjoy sharper artwork, and get started with just three setup screens.</string>
+    <string name="orynq_welcome_radio_title">Keep the music going</string>
+    <string name="orynq_welcome_radio_body">Play a song from Home or Search to build a queue of related songs. The featured card rotates every 15 seconds; the list refreshes when you return after 30 minutes.</string>
+    <string-array name="orynq_changelog_new">
+        <item>Daily Mix now learns from online listening history and combines familiar songs with related discoveries.</item>
+        <item>YouTube Music streaming and song search in the native player.</item>
+        <item>In-app account connection for a personalized Home feed, with encrypted session storage and disconnect controls.</item>
+        <item>Song radio: playing from Home or Search queues related songs.</item>
+        <item>Pull down on Home to fetch a fresh YouTube Music feed whenever you want.</item>
+        <item>A rotating featured card and Search-style song rows on Home.</item>
+    </string-array>
+    <string-array name="orynq_changelog_improvements">
+        <item>High-resolution YouTube Music album artwork where available, with safer square-cover selection and video-thumbnail fallback.</item>
+        <item>More relevant song-only YouTube Music search results.</item>
+        <item>Featured cards rotate every 15 seconds while Home is visible. After 30 minutes, the song list refreshes when you return.</item>
+        <item>Three-step onboarding: Welcome, Appearance, and Ready.</item>
+        <item>A cleaner orynq. header and a simpler About screen.</item>
+    </string-array>
+    <string-array name="orynq_changelog_fixes">
+        <item>Create a playlist and add selected songs in one step, with reliable online-song storage and save feedback.</item>
+        <item>Removed the processing-action notification from ordinary app startup while keeping background playback commands protected.</item>
+        <item>Search song actions now support radio playback, queue controls, saved playlists, sharing Music links, and live shuffle/repeat controls.</item>
+        <item>Improved lyrics matching for online songs with missing duration, and plain-lyrics fallback when synced lyrics are unavailable.</item>
+        <item>Home and Search playback no longer queues unrelated feed or search items.</item>
+        <item>Related songs stay in the queue when shuffle is turned off.</item>
+        <item>Improved Google sign-in redirects and loading-state recovery.</item>
+    </string-array>
+</resources>

@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
@@ -208,8 +209,11 @@ fun SetupScreen(
     }
 
     val pagerState = rememberPagerState(pageCount = { pages.size })
+    LaunchedEffect(pages.size) {
+        if (pagerState.currentPage > pages.lastIndex) pagerState.scrollToPage(pages.lastIndex)
+    }
     val scope = rememberCoroutineScope()
-    val currentPage = pages[pagerState.currentPage]
+    val currentPage = pages[pagerState.currentPage.coerceIn(0, pages.lastIndex)]
     val isNextButtonEnabled = isPermissionGateSatisfied(context, currentPage, uiState)
     var previousPageIndex by remember { mutableStateOf(0) }
     val navigateToPage: (Int) -> Unit = { targetPage ->
@@ -279,14 +283,22 @@ fun SetupScreen(
         }
     }
     Scaffold(
+        topBar = {
+            androidx.compose.material3.TextButton(modifier = Modifier.statusBarsPadding(), onClick = {
+                setupViewModel.setSetupComplete()
+                onSetupComplete()
+            }) {
+                androidx.compose.material3.Text("Continue with online music")
+            }
+        },
         bottomBar = {
             SetupBottomBar(
                 pagerState = pagerState,
                 animated = (pagerState.currentPage != 0),
                 isNextButtonEnabled = isNextButtonEnabled,
-                isFinishButtonEnabled = uiState.allPermissionsGranted,
+                isFinishButtonEnabled = true,
                 onNextClicked = {
-                    val page = pages[pagerState.currentPage]
+                    val page = currentPage
                     if (isPermissionGateSatisfied(context, page, uiState)) {
                         navigateToPage(pagerState.currentPage + 1)
                     } else {
@@ -295,13 +307,8 @@ fun SetupScreen(
                     }
                 },
                 onFinishClicked = {
-                    if (allRequiredPermissionsGrantedNow(context)) {
-                        setupViewModel.setSetupComplete()
-                        onSetupComplete()
-                    } else {
-                        setupViewModel.checkPermissions(context)
-                        Toast.makeText(context, context.getString(R.string.setup_toast_grant_all_permissions), Toast.LENGTH_SHORT).show()
-                    }
+                    setupViewModel.setSetupComplete(syncAfter = hasMediaPermissionNow(context))
+                    onSetupComplete()
                 }
             )
         }
@@ -550,30 +557,11 @@ sealed class SetupPage {
     object Finish : SetupPage()
 }
 
-private fun buildSetupPages(sdkInt: Int): List<SetupPage> {
-    val pages = mutableListOf<SetupPage>(
-        SetupPage.Welcome,
-        SetupPage.MediaPermission
-    )
-
-    if (sdkInt >= Build.VERSION_CODES.TIRAMISU) {
-        pages += SetupPage.NotificationsPermission
-    }
-
-    pages += SetupPage.BackupRestore
-    pages += SetupPage.DirectorySelection
-    pages += SetupPage.ThemeSelection
-    pages += SetupPage.LibraryLayout
-    pages += SetupPage.NavBarLayout
-
-    if (sdkInt >= Build.VERSION_CODES.S) {
-        pages += SetupPage.AlarmsPermission
-    }
-
-    pages += SetupPage.BatteryOptimization
-    pages += SetupPage.Finish
-    return pages
-}
+private fun buildSetupPages(sdkInt: Int): List<SetupPage> = listOf(
+    SetupPage.Welcome,
+    SetupPage.ThemeSelection,
+    SetupPage.Finish
+)
 
 private fun firstBlockedForwardPageIndex(
     pages: List<SetupPage>,
@@ -583,7 +571,7 @@ private fun firstBlockedForwardPageIndex(
     uiState: SetupUiState
 ): Int? {
     if (toPageIndex <= fromPageIndex) return null
-    return (fromPageIndex until toPageIndex).firstOrNull { pageIndex ->
+    return (fromPageIndex.coerceIn(0, pages.lastIndex) until toPageIndex.coerceIn(0, pages.lastIndex)).firstOrNull { pageIndex ->
         !isPermissionGateSatisfied(context, pages[pageIndex], uiState)
     }
 }

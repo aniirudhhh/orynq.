@@ -255,7 +255,7 @@ class AppDataBackupManager @Inject constructor(
                 step = ++step,
                 totalSteps = totalSteps,
                 title = "Backup complete",
-                detail = "Your PixelPlay backup was created successfully."
+                detail = "Your orynq. backup was created successfully."
             )
         }
     }

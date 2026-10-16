@@ -96,7 +96,7 @@
     <string name="lib_org_group_by_album_artist_subtitle">Show collaboration albums under main artist</string>
     <string name="multi_artist_info_title">About Multi-Artist Parsing</string>
     <string name="multi_artist_info_body">
-        PixelPlayer splits artist tags using character delimiters (/, ;, &amp;) and word delimiters (feat., ft., vs., x). Word delimiters are matched case-insensitively.
+        orynq. splits artist tags using character delimiters (/, ;, &amp;) and word delimiters (feat., ft., vs., x). Word delimiters are matched case-insensitively.
         \"Extract Artists from Title\" detects patterns like (feat. Artist) in song titles.
         Backslash (\) can be used to escape character delimiters.
     </string>
@@ -380,7 +380,7 @@
     <string name="settings_action_export_pxpl">Export .pxpl</string>
     <string name="settings_action_restore_selected">Restore Selected</string>
     <string name="settings_backup_transfer_in_progress">Transfer in progress…</string>
-    <string name="settings_backup_file_name_format">PixelPlayer_Backup_%1$d.pxpl</string>
+    <string name="settings_backup_file_name_format">orynq._Backup_%1$d.pxpl</string>
     <string name="settings_dialog_creating_backup">Creating Backup</string>
     <string name="settings_dialog_restoring_backup">Restoring Backup</string>
     <string name="settings_dialog_progress_percent">%1$d%%</string>
@@ -592,7 +592,7 @@
     <string name="settings_devcaps_report_copy">Copy</string>
     <string name="settings_devcaps_report_share">Share</string>
     <string name="settings_devcaps_report_copied">Report copied to clipboard</string>
-    <string name="settings_devcaps_report_share_title">PixelPlayer performance report</string>
+    <string name="settings_devcaps_report_share_title">orynq. performance report</string>
     <string name="settings_devcaps_advanced_diagnostics_title">Advanced performance diagnostics</string>
     <string name="settings_devcaps_advanced_diagnostics_description">Off by default. Records a short lag timeline for beta troubleshooting.</string>
     <string name="settings_devcaps_advanced_diagnostics_expires">Active until %1$s</string>
@@ -619,7 +619,7 @@
 
     <!-- About category -->
     <string name="about_screen_title">About</string>
-    <string name="about_app_name">PixelPlayer</string>
+    <string name="about_app_name">orynq.</string>
     <string name="about_tagline">Open source music player built with its community.</string>
     <string name="about_version_format">Version v%1$s</string>
     <string name="about_signal_open_source">Open source</string>
@@ -627,7 +627,7 @@
     <string name="about_signal_material3">Material 3 expressive</string>
     <string name="about_no_contributors">No contributors found right now. Please try again later.</string>
     <string name="about_maintainer_title">Maintainer</string>
-    <string name="about_maintainer_subtitle">The person behind PixelPlayer.</string>
+    <string name="about_maintainer_subtitle">Original app author</string>
     <string name="about_spotlight_title">Community spotlight</string>
     <string name="about_spotlight_subtitle">Recognition for collaborators with major impact.</string>
     <string name="about_licenses_title">Licenses and notices</string>

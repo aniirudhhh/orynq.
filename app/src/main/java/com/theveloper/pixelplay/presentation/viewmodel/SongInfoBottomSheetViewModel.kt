@@ -44,6 +44,7 @@ import kotlin.coroutines.resume
 
 @HiltViewModel
 class SongInfoBottomSheetViewModel @Inject constructor(
+    private val youTubeRepository: com.theveloper.pixelplay.data.youtube.YouTubeRepository,
     private val wearPhoneTransferSender: WearPhoneTransferSender,
     private val transferStateStore: PhoneWatchTransferStateStore,
     private val musicDao: MusicDao,
@@ -108,6 +109,8 @@ class SongInfoBottomSheetViewModel @Inject constructor(
 
     val audioMeta: StateFlow<AudioMeta?> = _audioMeta.asStateFlow()
 
+    suspend fun loadOnlineInfo(song: Song) = youTubeRepository.songInfo(song.id.removePrefix("youtube:"))
+
     fun loadArtistsForSong(song: Song) {
         val refs = song.artists
         if (refs.isEmpty() || refs.size < 2) {
@@ -130,6 +133,7 @@ class SongInfoBottomSheetViewModel @Inject constructor(
     }
 
     fun loadAudioMeta(song: Song) {
+        if (song.id.startsWith("youtube:")) { _audioMeta.value = null; return }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val meta = AudioMetaUtils.getAudioMetadata(
                 musicDao = musicDao,
@@ -195,7 +199,7 @@ class SongInfoBottomSheetViewModel @Inject constructor(
                 return@launch
             }
             if (!_isPixelPlayWatchAvailable.value) {
-                onComplete("No reachable watch with PixelPlay")
+                onComplete("No reachable watch with orynq.")
                 refreshWatchAvailability()
                 return@launch
             }
@@ -269,6 +273,7 @@ class SongInfoBottomSheetViewModel @Inject constructor(
     private fun getCloudProviderLabel(contentUriString: String): String? {
         val normalized = contentUriString.lowercase().trim()
         return when {
+            normalized.startsWith("youtube://") -> "YouTube Music"
             normalized.startsWith("telegram://") || normalized.startsWith("telegram:") -> "Telegram"
             normalized.startsWith("netease://") || normalized.startsWith("netease:") -> "Netease Music"
             normalized.startsWith("qqmusic://") || normalized.startsWith("qqmusic:") -> "QQ Music"

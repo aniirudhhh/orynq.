@@ -25,12 +25,14 @@ dependencyResolutionManagement {
                 includeGroup("com.github.philburk")
                 includeGroup("com.github.racra")
                 includeGroup("com.github.tdlibx")
+                includeGroup("com.github.MetrolistGroup.innertubex")
             }
         }
     }
 }
 
-rootProject.name = "PixelPlay"
+// Gradle forbids a trailing dot in project identifiers; display branding is "orynq.".
+rootProject.name = "orynq"
 include(":app")
 include(":shared")
 include(":wear")

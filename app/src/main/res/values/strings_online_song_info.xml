@@ -1,0 +1,5 @@
+<resources>
+    <string name="song_info_loading_value">Loading…</string>
+    <string name="song_info_unavailable_value">Not available</string>
+    <string name="song_info_retry_details">Retry details</string>
+</resources>

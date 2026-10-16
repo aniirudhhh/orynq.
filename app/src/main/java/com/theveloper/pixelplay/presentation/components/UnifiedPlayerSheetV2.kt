@@ -613,7 +613,7 @@ fun UnifiedPlayerSheetV2(
         currentSheetContentState,
         infrequentPlayerState.currentSong?.title
     ) {
-        "PixelPlay player sheet ${currentSheetContentState.name.lowercase()} " +
+        "orynq. player sheet ${currentSheetContentState.name.lowercase()} " +
             (infrequentPlayerState.currentSong?.title ?: "")
     }
 

@@ -107,7 +107,7 @@ class GDriveLoginViewModel @Inject constructor(
     }
 
     /**
-     * Create a "PixelPlay Music" folder in the current directory.
+     * Create a "orynq. Music" folder in the current directory.
      */
     fun createMusicFolder() {
         val parentId = breadcrumb.lastOrNull()?.id ?: "root"

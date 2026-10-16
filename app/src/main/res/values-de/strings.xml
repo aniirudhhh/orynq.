@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">PixelPlayer</string>
+    <string name="app_name">orynq.</string>
     <string name="app_tagline">Musikplayer</string>
     <string name="app_name_change_title">Neuer App-Name</string>
-    <string name="app_name_change_message">Wir haben die App von PixelPlay in PixelPlayer umbenannt – wegen eines Markenproblems. Viel Spaß!</string>
+    <string name="app_name_change_message">Willkommen bei orynq. Genieße deine Musik.</string>
     <string name="app_name_change_do_not_show_again">Nicht mehr anzeigen</string>
 
     <!-- Navigation Bar Labels -->
@@ -13,7 +13,7 @@
 
     <!-- All files access dialog-->
     <string name="all_files_access_title">Berechtigung erforderlich</string>
-    <string name="all_files_access_description">Song-Tags bearbeiten? Dafür braucht PixelPlayer Zugriff auf alle Dateien. Berechtigung im nächsten Schritt erteilen.</string>
+    <string name="all_files_access_description">Song-Tags bearbeiten? Dafür braucht orynq. Zugriff auf alle Dateien. Berechtigung im nächsten Schritt erteilen.</string>
     <string name="grant_permission_button">Berechtigung erteilen</string>
 
     <!-- External Player -->
@@ -32,14 +32,14 @@
     <string name="playstore_dialog_action_open">Play Store öffnen</string>
     <string name="playstore_dialog_action_continue_beta">Beta fortsetzen</string>
     <string name="playstore_dialog_link_pending">Der Play Store Link wird über die GitHub-Konfiguration freigeschaltet.</string>
-    <string name="playstore_dialog_title">PixelPlayer ist jetzt bei Google Play verfügbar</string>
-    <string name="playstore_dialog_body">Nutze den stabilen Kanal bei Google Play für Release-Updates, während wir die Beta-Builds aktiv halten.</string>
-    <string name="playstore_dialog_app_name">PixelPlayer</string>
+    <string name="playstore_dialog_title">Original-App auf Google Play</string>
+    <string name="playstore_dialog_body">Dieser Link öffnet den Eintrag der Original-App.</string>
+    <string name="playstore_dialog_app_name">Original-App</string>
     <string name="playstore_dialog_release_announcement">Release-Ankündigung</string>
     <string name="playstore_dialog_coming_soon">Demnächst</string>
 
     <!-- Brick breaker -->
-    <string name="easter_egg_thank_you">Vielen Dank, dass du PixelPlayer nutzt!</string>
+    <string name="easter_egg_thank_you">Vielen Dank, dass du orynq. nutzt!</string>
     <string name="brick_high">REKORD %1$d</string>
     <string name="brick_cd_close">Schließen</string>
     <string name="brick_stat_score">PUNKTE</string>

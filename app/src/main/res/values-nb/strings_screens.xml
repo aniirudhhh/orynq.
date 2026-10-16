@@ -13,14 +13,14 @@
     <string name="setup_beta_label">Beta</string>
     <string name="setup_intro_body">La oss sette opp alt for deg.</string>
     <string name="setup_permission_media_title">Medietilgang</string>
-    <string name="setup_permission_media_description">PixelPlayer trenger tilgang til lydfilene dine for å bygge biblioteket.</string>
+    <string name="setup_permission_media_description">orynq. trenger tilgang til lydfilene dine for å bygge biblioteket.</string>
     <string name="setup_permission_granted">Tillatelse gitt</string>
     <string name="setup_grant_media_permission">Gi medietilgang</string>
     <string name="setup_permission_notifications_title">Varslinger</string>
     <string name="setup_permission_notifications_description">Aktiver varslinger for å styre musikken fra låst skjerm.</string>
     <string name="setup_enable_notifications">Aktiver varslinger</string>
     <string name="setup_backup_have_title">Har du en sikkerhetskopi?</string>
-    <string name="setup_backup_have_description">Hvis du allerede har en PixelPlayer-sikkerhetskopi, kan du gjenopprette den nå.</string>
+    <string name="setup_backup_have_description">Hvis du allerede har en orynq.-sikkerhetskopi, kan du gjenopprette den nå.</string>
     <string name="setup_import_backup">Importer sikkerhetskopi</string>
     <string name="setup_inspecting_backup">Inspiserer sikkerhetskopi</string>
     <string name="setup_checking_backup">Sjekker sikkerhetskopi…</string>

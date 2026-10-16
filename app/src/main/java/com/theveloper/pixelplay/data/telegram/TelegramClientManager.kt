@@ -112,7 +112,7 @@ class TelegramClientManager @Inject constructor(
                     BuildConfig.TELEGRAM_API_ID,
                     BuildConfig.TELEGRAM_API_HASH,
                     "en", // systemLanguageCode
-                    "PixelPlayer Instance", // deviceModel
+                    "orynq. Instance", // deviceModel
                     android.os.Build.VERSION.RELEASE, // systemVersion
                     BuildConfig.VERSION_NAME
                 ), defaultHandler)

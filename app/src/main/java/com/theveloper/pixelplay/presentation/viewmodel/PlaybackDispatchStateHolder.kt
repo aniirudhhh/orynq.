@@ -114,14 +114,28 @@ class PlaybackDispatchStateHolder @Inject constructor(
 
     // Playback action parked until the MediaController finishes connecting.
     private var pendingPlaybackAction: (() -> Unit)? = null
+    private val pendingQueueActions = mutableListOf<Pair<Song, Boolean>>()
 
     /** Invoked by the ViewModel when the MediaController connects. */
     fun flushPendingPlaybackAction() {
-        pendingPlaybackAction?.invoke()
+        val playback = pendingPlaybackAction
         pendingPlaybackAction = null
+        playback?.invoke()
+        val additions = pendingQueueActions.toList()
+        pendingQueueActions.clear()
+        if (additions.isNotEmpty()) cb.scope.launch {
+            val ready = withTimeoutOrNull(10_000L) {
+                fullQueuePlaybackJob?.join()
+                directPlaybackJob?.join()
+                true
+            } == true
+            if (ready) additions.forEach { (song, next) -> if (next) addSongNextToQueue(song) else addSongToQueue(song) }
+            else cb.sendToast("Could not update the queue. Please try again.")
+        }
     }
 
     fun onCleared() {
+        pendingQueueActions.clear()
         remoteQueueLoadJob?.cancel()
     }
 
@@ -966,7 +980,10 @@ class PlaybackDispatchStateHolder @Inject constructor(
     }
 
     fun addSongToQueue(song: Song) {
+        if (cb.getController() == null) { pendingQueueActions.add(song to false); return }
         cb.getController()?.let { controller ->
+            val original = queueStateHolder.originalQueueOrder.ifEmpty { cb.getUiState().currentPlaybackQueue.toList() }
+            queueStateHolder.setOriginalQueueOrder(com.theveloper.pixelplay.data.youtube.queueWithAddedSong(original, song, null, false))
             val mediaItem = buildPlaybackMediaItem(song)
             controller.addMediaItem(mediaItem)
             // Queue UI is synced via onTimelineChanged listener
@@ -974,7 +991,11 @@ class PlaybackDispatchStateHolder @Inject constructor(
     }
 
     fun addSongNextToQueue(song: Song) {
+        if (cb.getController() == null) { pendingQueueActions.add(song to true); return }
         cb.getController()?.let { controller ->
+            val original = queueStateHolder.originalQueueOrder.ifEmpty { cb.getUiState().currentPlaybackQueue.toList() }
+            queueStateHolder.setOriginalQueueOrder(com.theveloper.pixelplay.data.youtube.queueWithAddedSong(
+                original, song, controller.currentMediaItem?.mediaId, true))
             val mediaItem = buildPlaybackMediaItem(song)
 
             val insertionIndex = if (controller.currentMediaItemIndex != C.INDEX_UNSET) {

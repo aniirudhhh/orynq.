@@ -2,6 +2,8 @@ package com.theveloper.pixelplay.presentation.navigation
 
 import DelimiterConfigScreen
 import com.theveloper.pixelplay.presentation.screens.WordDelimiterConfigScreen
+import com.theveloper.pixelplay.presentation.screens.SearchScreen
+import com.theveloper.pixelplay.presentation.screens.LibraryScreen
 import android.annotation.SuppressLint
 import androidx.annotation.OptIn
 import androidx.compose.animation.EnterTransition
@@ -43,7 +45,6 @@ import com.theveloper.pixelplay.presentation.screens.EasterEggScreen
 import com.theveloper.pixelplay.presentation.screens.ExperimentalSettingsScreen
 import com.theveloper.pixelplay.presentation.screens.GenreDetailScreen
 import com.theveloper.pixelplay.presentation.screens.HomeScreen
-import com.theveloper.pixelplay.presentation.screens.LibraryScreen
 import com.theveloper.pixelplay.presentation.screens.MashupScreen
 import com.theveloper.pixelplay.presentation.screens.NavBarCornerRadiusScreen
 import com.theveloper.pixelplay.presentation.screens.PaletteStyleSettingsScreen
@@ -52,7 +53,6 @@ import com.theveloper.pixelplay.presentation.screens.RecentlyPlayedScreen
 
 import com.theveloper.pixelplay.presentation.screens.AboutScreen
 import com.theveloper.pixelplay.presentation.screens.OpenSourceLicensesScreen
-import com.theveloper.pixelplay.presentation.screens.SearchScreen
 import com.theveloper.pixelplay.presentation.screens.StatsScreen
 import com.theveloper.pixelplay.presentation.screens.SettingsScreen
 import com.theveloper.pixelplay.presentation.screens.SettingsCategoryScreen

@@ -278,6 +278,75 @@ class LyricsRepositoryImplTest {
         coVerify(exactly = 1) { lyricsDao.insert(any()) }
     }
 
+    @Test
+    fun searchRemote_supportsOnlineSongWithUnknownDurationAndKeepsArtistChecks() = runTest {
+        val api = mockk<LrcLibApiService>(relaxed = true)
+        coEvery { api.searchLyrics(any(), any(), any(), any()) } returns arrayOf(
+            lrcResponse("ISHQ MUBARAK", "Arijit Singh", 290.0),
+            lrcResponse("ISHQ MUBARAK", "Unrelated artist", 290.0).copy(id = 999)
+        )
+        val repository = LyricsRepositoryImpl(testContext(), api, mockk(relaxed = true), mockk(relaxed = true))
+        val result = repository.searchRemote(testSong("youtube:example", "ISHQ MUBARAK", "Arijit Singh", duration = 0L))
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.getOrThrow().second.map { it.record.artistName }).containsExactly("Arijit Singh")
+    }
+
+    @Test
+    fun searchRemote_doesNotDiscardLaterMatchingBatch() = runTest {
+        val api = mockk<LrcLibApiService>(relaxed = true)
+        coEvery { api.searchLyrics(any(), any(), any(), any()) } coAnswers {
+            if (firstArg<String?>() != null) arrayOf(lrcResponse("Unrelated song", "Other artist", 180.0))
+            else { kotlinx.coroutines.delay(30); arrayOf(lrcResponse("Real song", "Real artist", 180.0)) }
+        }
+        val repository = LyricsRepositoryImpl(testContext(), api, mockk(relaxed = true), mockk(relaxed = true))
+        val result = repository.searchRemote(testSong("youtube:example", "Real song", "Real artist", duration = 180_000L))
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.getOrThrow().second.map { it.record.name }).containsExactly("Real song")
+    }
+
+    @Test
+    fun fetchRemote_fallsBackToExactYouTubeLyricsAndRestoresFromCache() = runTest {
+        val api = mockk<LrcLibApiService>(relaxed = true)
+        val youtube = mockk<com.theveloper.pixelplay.data.youtube.YouTubeRepository>()
+        coEvery { api.searchLyrics(any(), any(), any(), any()) } returns emptyArray()
+        coEvery { api.getLyrics(any(), any(), any(), any()) } returns null
+        coEvery { youtube.songLyrics("abcdefghijk") } returns "First line\nSecond line"
+        val repository = LyricsRepositoryImpl(testContext(), api, mockk(relaxed = true), mockk(relaxed = true), youtube)
+        val song = testSong("youtube:abcdefghijk", "Song", "Artist", duration = 180_000)
+        val result = repository.fetchFromRemote(song)
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.getOrThrow().second).isEqualTo("First line\nSecond line")
+        assertThat(result.getOrThrow().first.areFromRemote).isTrue()
+        assertThat(repository.fetchFromRemote(song).isSuccess).isTrue()
+        coVerify(exactly = 1) { youtube.songLyrics("abcdefghijk") }
+    }
+
+    @Test
+    fun fetchRemote_keepsSyncedLrcLibResultWithoutFallback() = runTest {
+        val api = mockk<LrcLibApiService>(relaxed = true)
+        val youtube = mockk<com.theveloper.pixelplay.data.youtube.YouTubeRepository>()
+        coEvery { api.searchLyrics(any(), any(), any(), any()) } returns arrayOf(lrcResponse("Song", "Artist", 180.0))
+        val repository = LyricsRepositoryImpl(testContext(), api, mockk(relaxed = true), mockk(relaxed = true), youtube)
+        val result = repository.fetchFromRemote(testSong("youtube:abcdefghijk", "Song", "Artist", duration = 180_000))
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.getOrThrow().first.synced).isNotEmpty()
+        coVerify(exactly = 0) { youtube.songLyrics(any()) }
+    }
+
+    @Test
+    fun fetchRemote_cancellationNeverStartsAnotherProvider() = runTest {
+        val api = mockk<LrcLibApiService>(relaxed = true)
+        val youtube = mockk<com.theveloper.pixelplay.data.youtube.YouTubeRepository>()
+        coEvery { api.searchLyrics(any(), any(), any(), any()) } throws kotlinx.coroutines.CancellationException()
+        val repository = LyricsRepositoryImpl(testContext(), api, mockk(relaxed = true), mockk(relaxed = true), youtube)
+        var cancelled = false
+        try {
+            repository.fetchFromRemote(testSong("youtube:abcdefghijk", "Song", "Artist", duration = 180_000))
+        } catch (_: kotlinx.coroutines.CancellationException) { cancelled = true }
+        assertThat(cancelled).isTrue()
+        coVerify(exactly = 0) { youtube.songLyrics(any()) }
+    }
+
     private fun testContext(filesDir: File = Files.createTempDirectory("pixelplay-lyrics-test").toFile()): Context {
         return mockk<Context>(relaxed = true) {
             every { this@mockk.filesDir } returns filesDir

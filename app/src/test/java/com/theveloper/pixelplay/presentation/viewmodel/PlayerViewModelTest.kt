@@ -285,6 +285,9 @@ class PlayerViewModelTest {
         playerViewModel = PlayerViewModel(
             mockContext,
             mockMusicRepository,
+            mockk<com.theveloper.pixelplay.data.youtube.YouTubeRepository> {
+                every { savedTracks } returns MutableStateFlow(emptyList<com.theveloper.pixelplay.data.youtube.OnlineTrack>())
+            },
             mockUserPreferencesRepository,
             mockAiPreferencesRepository,
             mockThemePreferencesRepository,

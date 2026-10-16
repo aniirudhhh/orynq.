@@ -6,6 +6,8 @@
     <exclude domain="sharedpref" path="netease_prefs.xml"/>
     <exclude domain="sharedpref" path="gdrive_prefs.xml"/>
     <exclude domain="sharedpref" path="qqmusic_prefs.xml"/>
+        <exclude domain="sharedpref" path="youtube_account_home.xml"/>
+        <exclude domain="root" path="app_webview_youtube_login/"/>
 
     <!-- Also exclude the plaintext fallback files written when
          EncryptedSharedPreferences fails to initialize. -->

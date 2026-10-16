@@ -1,5 +1,11 @@
 # Third-Party Notices
 
+## InnerTubeX
+
+The online music integration uses InnerTubeX 0.7.2 by MetrolistGroup, licensed under GNU GPL version 3.
+Source and license: https://github.com/MetrolistGroup/innertubex/tree/0.7.2
+PixelPlayer's existing source license is retained.
+
 Portions of this software were originally contributed under the MIT License prior to 2026-05-12. Those contributions remain licensed under the MIT License, and the notice below is preserved as required.
 
 ## MIT License
@@ -73,3 +79,4 @@ The following contributor names were generated from the Git history through `cee
 - jair1c
 - ori
 - Неважно
+The anonymous WebView attestation adapter and `youtube_token_runtime.html` use the community InnerTubeX harness protocol/runtime (MetrolistGroup/innertubex, GPL-3.0). Tokens are generated in an isolated native WebView, kept in memory, and never logged. The public web-client attestation key is a YouTube protocol constant, not a user API credential.

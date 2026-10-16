@@ -31,7 +31,8 @@ import org.junit.jupiter.api.Test
 @ExperimentalCoroutinesApi
 class MusicRepositoryImplTest {
 
-    private lateinit var musicRepository: MusicRepositoryImpl
+    private val mockYoutube: com.theveloper.pixelplay.data.youtube.YouTubeRepository = mockk()
+    private lateinit var musicRepository: MusicRepository
     private val mockMusicDao: MusicDao = mockk()
     private val mockSearchHistoryDao: SearchHistoryDao = mockk(relaxed = true) // relaxed para evitar mockear todos los métodos de historial
     private val mockContext: Context = mockk(relaxed = true) // relaxed para getAllUniqueAudioDirectories si no se testea a fondo aquí
@@ -101,7 +102,7 @@ class MusicRepositoryImplTest {
 
 
 
-        musicRepository = MusicRepositoryImpl(
+        musicRepository = com.theveloper.pixelplay.di.AppModule.provideMusicRepository(
             context = mockContext,
             userPreferencesRepository = mockUserPreferencesRepository,
             playlistPreferencesRepository = mockPlaylistPreferencesRepository,
@@ -109,19 +110,43 @@ class MusicRepositoryImplTest {
             musicDao = mockMusicDao,
             lyricsRepository = mockLyricsRepository,
             telegramDao = mockTelegramDao,
-            telegramCacheManagerProvider = mockTelegramCacheManagerProvider,
-            telegramRepositoryProvider = mockTelegramRepositoryProvider,
+            telegramCacheManager = mockTelegramCacheManagerProvider,
+            telegramRepository = mockTelegramRepositoryProvider,
             songRepository = mockSongRepository,
 
             favoritesDao = mockFavoritesDao,
             artistImageRepository = mockArtistImageRepository,
-            folderTreeBuilder = mockk(relaxed = true)
+            folderTreeBuilder = mockk(relaxed = true),
+            youtubeRepository = mockYoutube
         )
     }
 
     @AfterEach
     fun tearDown() {
         Dispatchers.resetMain() // Limpiar el dispatcher de Main
+    }
+
+    @Test
+    fun `online playlist resolves without numeric Room IDs`() = runTest(testDispatcher) {
+        val track = com.theveloper.pixelplay.data.youtube.OnlineTrack("aaaaaaaaaaa", "Online", "Artist", null)
+        every { mockYoutube.playlistTracks } returns kotlinx.coroutines.flow.MutableStateFlow(listOf(track))
+        every { mockYoutube.savedTracks } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        every { mockYoutube.knownOnlineTracks() } returns listOf(track)
+        assertEquals(listOf(track.asSong()), musicRepository.getSongsByIds(listOf("youtube:aaaaaaaaaaa")).first())
+        assertEquals(track.asSong(), musicRepository.getSong("youtube:aaaaaaaaaaa").first())
+        verify(exactly = 0) { mockMusicDao.getSongsByIds(any(),any(),any()) }
+        verify(exactly = 0) { mockTelegramDao.getSongsByIds(any()) }
+    }
+
+    @Test
+    fun `mixed playlist keeps local and online request order`() = runTest(testDispatcher) {
+        val track = com.theveloper.pixelplay.data.youtube.OnlineTrack("aaaaaaaaaaa", "Online", "Artist", null)
+        val local = createSongEntity(1L, "Local", "Artist", "Pop", "/local.mp3", "/")
+        every { mockMusicDao.getSongsByIds(listOf(1L),emptyList(),false) } returns flowOf(listOf(local))
+        every { mockYoutube.playlistTracks } returns kotlinx.coroutines.flow.MutableStateFlow(listOf(track))
+        every { mockYoutube.savedTracks } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+        every { mockYoutube.knownOnlineTracks() } returns listOf(track)
+        assertEquals(listOf("youtube:aaaaaaaaaaa","1"),musicRepository.getSongsByIds(listOf("youtube:aaaaaaaaaaa","1")).first().map { it.id })
     }
 
     // --- Pruebas para getAudioFiles ---

@@ -58,7 +58,7 @@ object ZipShareHelper {
             
             // Generate unique filename
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val zipFile = File(zipDir, "PixelPlay_Songs_$timestamp.zip")
+            val zipFile = File(zipDir, "orynq._Songs_$timestamp.zip")
             
             // Create ZIP file
             ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zipOut ->
@@ -196,7 +196,7 @@ object ZipShareHelper {
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "application/zip"
             putExtra(Intent.EXTRA_STREAM, zipUri)
-            putExtra(Intent.EXTRA_SUBJECT, "PixelPlay: $songCount Songs")
+            putExtra(Intent.EXTRA_SUBJECT, "orynq.: $songCount Songs")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         

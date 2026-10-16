@@ -99,7 +99,8 @@ class MusicRepositoryImpl @Inject constructor(
     private val songRepository: SongRepository,
     private val favoritesDao: FavoritesDao,
     private val artistImageRepository: ArtistImageRepository,
-    private val folderTreeBuilder: FolderTreeBuilder
+    private val folderTreeBuilder: FolderTreeBuilder,
+    private val youtubeRepository: com.theveloper.pixelplay.data.youtube.YouTubeRepository
 ) : MusicRepository {
 
     companion object {
@@ -711,12 +712,15 @@ class MusicRepositoryImpl @Inject constructor(
     override fun getSongsByIds(songIds: List<String>): Flow<List<Song>> {
         if (songIds.isEmpty()) return flowOf(emptyList())
         val longIds = songIds.mapNotNull { it.toLongOrNull() }
-        if (longIds.isEmpty()) return flowOf(emptyList())
-        return musicDao.getSongsByIds(longIds, emptyList(), false).map { entities ->
-            val songMap = entities.associate { it.id.toString() to it.toSong() }
-            // Preserve the requested order
-            songIds.mapNotNull { songMap[it] }
-        }.flowOn(Dispatchers.IO)
+        val local = if (longIds.isEmpty()) flowOf(emptyList()) else
+            musicDao.getSongsByIds(longIds, emptyList(), false).map { entities -> entities.map { it.toSong() } }
+        val online = youtubeRepository
+        if (songIds.any { it.startsWith("youtube:") }) {
+            return combine(local, online.playlistTracks, online.savedTracks) { songs, _, _ ->
+                com.theveloper.pixelplay.data.youtube.resolveOnlinePlaylistSongs(songIds, songs, online.knownOnlineTracks())
+            }.flowOn(Dispatchers.IO)
+        }
+        return local.map { songs -> val byId = songs.associateBy { it.id }; songIds.mapNotNull { byId[it] } }.flowOn(Dispatchers.IO)
     }
 
     override suspend fun getSongByPath(path: String): Song? {
@@ -845,6 +849,9 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override fun getSong(songId: String): Flow<Song?> {
+        if (songId.startsWith("youtube:")) {
+            return getSongsByIds(listOf(songId)).map { it.firstOrNull() }
+        }
         val longId = songId.toLongOrNull()
         return if (longId != null) {
             musicDao.getSongById(longId).map { it?.toSong() }.flowOn(Dispatchers.IO)

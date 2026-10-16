@@ -255,9 +255,9 @@ class SetupViewModel @Inject constructor(
         }
     }
 
-    fun setSetupComplete() {
+    fun setSetupComplete(syncAfter: Boolean = false) {
         viewModelScope.launch {
-            completeSetup(syncAfter = true)
+            completeSetup(syncAfter = syncAfter)
         }
     }
     

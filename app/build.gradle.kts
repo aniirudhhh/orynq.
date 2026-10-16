@@ -237,6 +237,10 @@ kotlin {
 }
 
 dependencies {
+    implementation("com.github.MetrolistGroup.innertubex:innertubex:0.7.2")
+    implementation("io.ktor:ktor-client-okhttp:3.5.0")
+    implementation("io.ktor:ktor-client-content-negotiation:3.5.0")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.5.0")
     // Core & Optimization
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.profileinstaller)

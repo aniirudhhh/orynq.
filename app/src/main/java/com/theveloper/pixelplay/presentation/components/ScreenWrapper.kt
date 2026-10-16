@@ -81,6 +81,7 @@ fun ScreenWrapper(
         entry.destination.route?.let { route -> !isMainRootRoute(route) } == true
     }
     val shouldRunDepthEffects = !isMainRootScreen || hasVisibleNonMainRootScreen
+    val lightweightPush = isMainRootScreen && shouldDimForLightweightRoute(currentBackStackEntryState?.destination?.route)
 
     // Dim/Blur Logic: the screen "behind" during any transition — forward push, committed pop,
     // or an in-progress predictive back gesture — is always the entry directly below the top of
@@ -154,13 +155,13 @@ fun ScreenWrapper(
     }
 
     // Blur: If strictly behind Top -> 24dp. Else -> 0dp. Disabled if disableBlurAllOver is true.
-    val targetBlur = if (shouldRunDepthEffects && shouldDim && !disableBlurAllOver) 24f else 0f
+    val targetBlur = if (shouldRunDepthEffects && shouldDim && !disableBlurAllOver && !lightweightPush) 24f else 0f
     val animatedBlurRadius = if (transition != null) {
         val animatedValue by transition.animateDp(
             transitionSpec = { tween(durationMillis = 350, easing = CubicBezierEasing(0.5f, 0f, 0.8f, 0.2f)) },
             label = "blurRadius"
         ) { state ->
-            if (shouldRunDepthEffects && shouldDim && !disableBlurAllOver && (state == EnterExitState.PostExit || state == EnterExitState.PreEnter)) {
+            if (shouldRunDepthEffects && shouldDim && !disableBlurAllOver && !lightweightPush && (state == EnterExitState.PostExit || state == EnterExitState.PreEnter)) {
                 24.dp
             } else {
                 0.dp
@@ -178,19 +179,9 @@ fun ScreenWrapper(
     Box(
         modifier = modifier
             .fillMaxSize()
-            // Keep both the graphicsLayer modifier AND its compositingStrategy stable across
-            // the full lifecycle of the screen. Toggling the strategy between Auto and
-            // Offscreen mid-transition (when cornerRadius crosses the threshold) causes the
-            // RenderNode's rendering mode to flip for one frame, producing a subtle flash on
-            // the outgoing screen right as the animation starts. Main root tab switches are
-            // the exception: Home/Search/Library keep the same slide/fade transition, but skip
-            // the expensive offscreen depth layer while no deeper screen is visible.
+            // Keep each route's layer strategy stable, without allocating a root render target at push time.
             .graphicsLayer {
-                compositingStrategy = if (shouldRunDepthEffects) {
-                    CompositingStrategy.Offscreen
-                } else {
-                    CompositingStrategy.Auto
-                }
+                compositingStrategy = if (isMainRootScreen) CompositingStrategy.Auto else CompositingStrategy.Offscreen
                 if (shouldRunDepthEffects && animatedCornerRadius > 0.5f) {
                     this.shape = RoundedCornerShape(animatedCornerRadius.dp)
                     this.clip = true
@@ -212,3 +203,5 @@ fun ScreenWrapper(
         )
     }
 }
+
+private fun shouldDimForLightweightRoute(route: String?) = route == "settings" || route == "daily_mix"

@@ -562,12 +562,15 @@ fun PlaylistItem(
 fun CreatePlaylistDialogRedesigned(
     onDismiss: () -> Unit,
     onCreate: (String) -> Unit,
-    onGenerateClick: () -> Unit
+    onGenerateClick: () -> Unit,
+    isSaving: Boolean = false,
+    error: String? = null,
+    selectedSongCount: Int = 0
 ) {
     var playlistName by remember { mutableStateOf("") }
 
     BasicAlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSaving) onDismiss() },
     ) {
         Surface(
             shape = RoundedCornerShape(32.dp),
@@ -590,6 +593,8 @@ fun CreatePlaylistDialogRedesigned(
 
                 OutlinedTextField(
                     value = playlistName,
+                    enabled = !isSaving,
+                    isError = error != null,
                     onValueChange = { playlistName = it },
                     label = { Text(stringResource(R.string.playlist_container_create_playlist_name_label)) },
                     placeholder = { Text(stringResource(R.string.playlist_container_create_playlist_name_placeholder)) },
@@ -604,6 +609,13 @@ fun CreatePlaylistDialogRedesigned(
                     )
                 )
 
+                if (error != null) {
+                    Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 12.dp))
+                } else if (selectedSongCount > 0) {
+                    Text(androidx.compose.ui.res.pluralStringResource(R.plurals.playlist_create_selected_songs,
+                        selectedSongCount, selectedSongCount), modifier = Modifier.padding(bottom = 12.dp),
+                        style = MaterialTheme.typography.bodyMedium)
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -611,6 +623,7 @@ fun CreatePlaylistDialogRedesigned(
                 ) {
                     TextButton(
                         onClick = onDismiss,
+                        enabled = !isSaving,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(stringResource(R.string.common_cancel), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -619,14 +632,16 @@ fun CreatePlaylistDialogRedesigned(
                     Button(
                         onClick = { onCreate(playlistName) },
                         modifier = Modifier.weight(1f),
-                        enabled = playlistName.isNotEmpty(),
+                        enabled = playlistName.isNotBlank() && !isSaving,
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
-                        Text(stringResource(R.string.common_create), fontWeight = FontWeight.Bold)
+                        Text(stringResource(if (isSaving) R.string.playlist_create_saving
+                            else if (selectedSongCount > 0) R.string.playlist_create_and_add else R.string.common_create),
+                            fontWeight = FontWeight.Bold)
                     }
                 }
             }

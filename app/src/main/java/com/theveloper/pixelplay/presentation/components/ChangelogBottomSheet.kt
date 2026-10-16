@@ -21,9 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.MediumExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,8 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -48,7 +44,6 @@ import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.presentation.components.subcomps.SineWaveLine
 import com.theveloper.pixelplay.ui.theme.ExpTitleTypography
 import com.theveloper.pixelplay.ui.theme.GoogleSansRounded
-import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 
 data class ChangelogSection(
     @StringRes val titleRes: Int,
@@ -64,64 +59,12 @@ data class ChangelogVersion(
 @Composable
 private fun changelogVersions(): List<ChangelogVersion> = listOf(
     ChangelogVersion(
-        version = "0.7.5-beta",
-        date = "2026-06-13",
+        version = "orynq.",
+        date = "2026-10-14",
         sections = listOf(
-            ChangelogSection(R.string.changelog_sec_whats_new, R.array.changelog_075_whats_new),
-            ChangelogSection(R.string.changelog_sec_improvements, R.array.changelog_075_improvements),
-            ChangelogSection(R.string.changelog_sec_fixes, R.array.changelog_075_fixes)
-        )
-    ),
-    ChangelogVersion(
-        version = "0.7.0-beta",
-        date = "2026-05-25",
-        sections = listOf(
-            ChangelogSection(R.string.changelog_sec_whats_new, R.array.changelog_070_whats_new),
-            ChangelogSection(R.string.changelog_sec_improvements, R.array.changelog_070_improvements),
-            ChangelogSection(R.string.changelog_sec_fixes, R.array.changelog_070_fixes),
-            ChangelogSection(R.string.changelog_sec_added, R.array.changelog_070_added)
-        )
-    ),
-    ChangelogVersion(
-        version = "0.6.0-beta",
-        date = "2026-03-05",
-        sections = listOf(
-            ChangelogSection(R.string.changelog_sec_whats_new, R.array.changelog_060_whats_new),
-            ChangelogSection(R.string.changelog_sec_improvements, R.array.changelog_060_improvements),
-            ChangelogSection(R.string.changelog_sec_fixes, R.array.changelog_060_fixes)
-        )
-    ),
-    ChangelogVersion(
-        version = "0.5.0-beta",
-        date = "2026-01-14",
-        sections = listOf(
-            ChangelogSection(R.string.changelog_sec_improvements, R.array.changelog_050_improvements),
-            ChangelogSection(R.string.changelog_sec_fixes, R.array.changelog_050_fixes)
-        )
-    ),
-    ChangelogVersion(
-        version = "0.4.0-beta",
-        date = "2025-12-15",
-        sections = listOf(
-            ChangelogSection(R.string.changelog_sec_improvements, R.array.changelog_040_improvements)
-        )
-    ),
-    ChangelogVersion(
-        version = "0.3.0-beta",
-        date = "2025-10-28",
-        sections = listOf(
-            ChangelogSection(R.string.changelog_sec_whats_new, R.array.changelog_030_whats_new),
-            ChangelogSection(R.string.changelog_sec_improvements, R.array.changelog_030_improvements),
-            ChangelogSection(R.string.changelog_sec_fixes, R.array.changelog_030_fixes)
-        )
-    ),
-    ChangelogVersion(
-        version = "0.2.0-beta",
-        date = "2024-09-15",
-        sections = listOf(
-            ChangelogSection(R.string.changelog_sec_added, R.array.changelog_020_added),
-            ChangelogSection(R.string.changelog_sec_improvements, R.array.changelog_020_improvements),
-            ChangelogSection(R.string.changelog_sec_fixes, R.array.changelog_020_fixes)
+            ChangelogSection(R.string.changelog_sec_whats_new, R.array.orynq_changelog_new),
+            ChangelogSection(R.string.changelog_sec_improvements, R.array.orynq_changelog_improvements),
+            ChangelogSection(R.string.changelog_sec_fixes, R.array.orynq_changelog_fixes)
         )
     )
 )
@@ -131,11 +74,8 @@ private fun changelogVersions(): List<ChangelogVersion> = listOf(
 fun ChangelogBottomSheet(
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val changelogUrl = "https://github.com/theovilardo/PixelPlayer/blob/master/CHANGELOG.md"
     val changelog = changelogVersions()
 
-    val fabCornerRadius = 16.dp
 
     Box(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -181,32 +121,6 @@ fun ChangelogBottomSheet(
                 }
             }
         }
-
-        MediumExtendedFloatingActionButton(
-            onClick = { openUrl(context, changelogUrl) },
-            shape = AbsoluteSmoothCornerShape(
-                cornerRadiusBR = fabCornerRadius,
-                smoothnessAsPercentBR = 60,
-                cornerRadiusBL = fabCornerRadius,
-                smoothnessAsPercentBL = 60,
-                cornerRadiusTR = fabCornerRadius,
-                smoothnessAsPercentTR = 60,
-                cornerRadiusTL = fabCornerRadius,
-                smoothnessAsPercentTL = 60
-            ),
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-            icon = {
-                Icon(
-                    painter = painterResource(id = R.drawable.github),
-                    contentDescription = null
-                )
-            },
-            text = { Text(text = stringResource(R.string.changelog_view_github)) },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(horizontal = 24.dp, vertical = 24.dp)
-        )
 
         Box(
             modifier = Modifier

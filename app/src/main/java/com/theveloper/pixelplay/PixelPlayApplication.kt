@@ -89,11 +89,16 @@ class PixelPlayApplication : Application(), ImageLoaderFactory, Configuration.Pr
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(AppLocaleManager.wrapContext(base))
+        if (Application.getProcessName().endsWith(":youtube_login")) {
+            android.webkit.WebView.setDataDirectorySuffix("youtube_login")
+        }
     }
 
     override fun onCreate() {
         instance = this
         super.onCreate()
+        // The login process only hosts its isolated WebView; skip music/background initialization.
+        if (Application.getProcessName().endsWith(":youtube_login")) return
 
         // Benchmark variant intentionally restarts/kills app process during tests.
         // Avoid persisting those events as user-facing crash reports.
@@ -111,7 +116,7 @@ class PixelPlayApplication : Application(), ImageLoaderFactory, Configuration.Pr
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "PixelPlayer Music Playback",
+                "orynq. Music Playback",
                 NotificationManager.IMPORTANCE_LOW
             )
             val notificationManager = getSystemService(NotificationManager::class.java)

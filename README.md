@@ -1,4 +1,6 @@
-# PixelPlayer 🎵
+# orynq.
+
+A private customization of [PixelPlayer](https://github.com/PixelPlayerHQ/PixelPlayer), retaining upstream attribution and license.
 
 <p align="center">
   <img src="assets/PixelPlayer.svg" alt="App Icon" height="250"/>

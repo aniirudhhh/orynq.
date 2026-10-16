@@ -283,7 +283,17 @@ object AppModule {
                     request
                 }
 
-                chain.proceed(newRequest)
+                val response = chain.proceed(newRequest)
+                // Some videos have no max-resolution thumbnail. Keep a real cover instead of a 404.
+                if (newRequest.url.host == "i.ytimg.com" &&
+                    newRequest.url.encodedPath.endsWith("/maxresdefault.jpg") &&
+                    response.code in setOf(404, 410)) {
+                    response.close()
+                    val fallback = newRequest.url.newBuilder()
+                        .encodedPath(newRequest.url.encodedPath.replace("/maxresdefault.jpg", "/hqdefault.jpg"))
+                        .build()
+                    chain.proceed(newRequest.newBuilder().url(fallback).build())
+                } else response
             }
             .build()
 
@@ -321,13 +331,15 @@ object AppModule {
         @ApplicationContext context: Context,
         lrcLibApiService: LrcLibApiService,
         lyricsDao: LyricsDao,
-        okHttpClient: OkHttpClient
+        okHttpClient: OkHttpClient,
+        youtube: com.theveloper.pixelplay.data.youtube.YouTubeRepository
     ): LyricsRepository {
         return LyricsRepositoryImpl(
             context = context,
             lrcLibApiService = lrcLibApiService,
             lyricsDao = lyricsDao,
-            okHttpClient = okHttpClient
+            okHttpClient = okHttpClient,
+            youtube = youtube
         )
     }
 
@@ -382,7 +394,8 @@ object AppModule {
         songRepository: SongRepository,
         favoritesDao: FavoritesDao,
         artistImageRepository: ArtistImageRepository,
-        folderTreeBuilder: FolderTreeBuilder
+        folderTreeBuilder: FolderTreeBuilder,
+        youtubeRepository: com.theveloper.pixelplay.data.youtube.YouTubeRepository
     ): MusicRepository {
         return MusicRepositoryImpl(
             context = context,
@@ -397,7 +410,8 @@ object AppModule {
             songRepository = songRepository,
             favoritesDao = favoritesDao,
             artistImageRepository = artistImageRepository,
-            folderTreeBuilder = folderTreeBuilder
+            folderTreeBuilder = folderTreeBuilder,
+            youtubeRepository = youtubeRepository
         )
 
     }
@@ -465,7 +479,7 @@ object AppModule {
             .addInterceptor { chain ->
                 val originalRequest = chain.request()
                 val requestWithUserAgent = originalRequest.newBuilder()
-                    .header("User-Agent", "PixelPlayer/1.0 (Android; Music Player)")
+                    .header("User-Agent", "orynq./1.0 (Android; Music Player)")
                     .build()
                 chain.proceed(requestWithUserAgent)
             }
@@ -521,7 +535,7 @@ object AppModule {
             .addInterceptor { chain ->
                 val originalRequest = chain.request()
                 val requestWithHeaders = originalRequest.newBuilder()
-                    .header("User-Agent", "PixelPlayer/1.0 (Android; Music Player)")
+                    .header("User-Agent", "orynq./1.0 (Android; Music Player)")
                     .header("Accept", "application/json")
                     .build()
                 chain.proceed(requestWithHeaders)

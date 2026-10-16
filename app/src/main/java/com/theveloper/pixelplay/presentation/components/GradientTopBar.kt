@@ -1,5 +1,11 @@
 package com.theveloper.pixelplay.presentation.components
 
+import androidx.compose.ui.draw.clip
+
+import androidx.compose.material.icons.rounded.MusicNote
+
+import androidx.compose.material.icons.rounded.AccountCircle
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -37,6 +43,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import com.theveloper.pixelplay.R
 import com.theveloper.pixelplay.ui.theme.GoogleSansRounded
 import com.theveloper.pixelplay.ui.theme.PixelPlayStatusBarStyle
@@ -104,6 +112,8 @@ fun HomeGradientTopBar(
     onTelegramClick: () -> Unit,
     onMenuClick: () -> Unit = {},
     isScrolled: Boolean = false,
+    musicAccountAvatar: String? = null,
+    isMusicConnected: Boolean = false,
 ) {
     val surfaceContainerHigh = MaterialTheme.colorScheme.surfaceContainerHighest
 
@@ -117,45 +127,27 @@ fun HomeGradientTopBar(
 
     TopAppBar(
         modifier = Modifier.background(surfaceContainerHigh.copy(alpha = animatedAlpha)),
-        title = { /* nada, usamos solo acciones */ },
-        navigationIcon = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(start = 12.dp)
-            ) {
-                FilledTonalButton(
-                    modifier = Modifier.padding(start = 4.dp),
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    onClick = onBetaClick
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.topbar_beta_letter),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            text = stringResource(R.string.topbar_beta_label),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
+        title = {
+            Text(
+                text = stringResource(R.string.app_name),
+                modifier = Modifier.padding(start = 4.dp),
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontFamily = GoogleSansRounded,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 28.sp,
+                    lineHeight = 34.sp,
+                    letterSpacing = (-0.6).sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         },
         actions = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(end = 14.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(end = 16.dp)
             ) {
                 FilledIconButton(
                     colors = IconButtonDefaults.filledIconButtonColors(
@@ -164,21 +156,13 @@ fun HomeGradientTopBar(
                     ),
                     onClick = onTelegramClick
                 ) {
-                    Icon(
-                         imageVector = Icons.Rounded.Cloud,
-                         contentDescription = stringResource(R.string.topbar_cd_cloud_streaming)
-                    )
-                }
-                FilledIconButton(
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    onClick = onMoreOptionsClick
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.round_newspaper_24),
-                        contentDescription = stringResource(R.string.topbar_cd_changelog)
+                    if (isMusicConnected && musicAccountAvatar != null) {
+                        SmartImage(musicAccountAvatar, "YouTube Music account",
+                            modifier = Modifier.size(28.dp).clip(androidx.compose.foundation.shape.CircleShape),
+                            targetSize = coil.size.Size(128, 128))
+                    } else Icon(
+                        imageVector = if (isMusicConnected) Icons.Rounded.AccountCircle else Icons.Rounded.MusicNote,
+                        contentDescription = if (isMusicConnected) "YouTube Music account" else "Connect YouTube Music"
                     )
                 }
                 FilledIconButton(

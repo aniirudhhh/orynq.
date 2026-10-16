@@ -86,7 +86,7 @@ class AutoMediaBrowseTree @Inject constructor(
 
     suspend fun getItem(mediaId: String): MediaItem? {
         return when {
-            mediaId == ROOT_ID -> buildBrowsableItem(ROOT_ID, "PixelPlay", null, MediaMetadata.MEDIA_TYPE_MUSIC)
+            mediaId == ROOT_ID -> buildBrowsableItem(ROOT_ID, "orynq.", null, MediaMetadata.MEDIA_TYPE_MUSIC)
             mediaId == RECENT_ID || mediaId == FAVORITES_ID || mediaId == PLAYLISTS_ID ||
                     mediaId == ALBUMS_ID || mediaId == ARTISTS_ID || mediaId == SONGS_ID -> {
                 getRootItems().find { it.mediaId == mediaId }

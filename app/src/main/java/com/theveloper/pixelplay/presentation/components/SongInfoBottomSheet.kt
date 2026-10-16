@@ -53,6 +53,8 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
@@ -75,6 +77,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -142,9 +146,15 @@ fun SongInfoBottomSheet(
         coverArtUpdate: CoverArtUpdate?
     ) -> Unit,
     removeFromListTrigger: () -> Unit,
-    songInfoViewModel: SongInfoBottomSheetViewModel = hiltViewModel()
+    songInfoViewModel: SongInfoBottomSheetViewModel = hiltViewModel(),
+    isShuffleEnabled: Boolean = false,
+    repeatMode: Int = androidx.media3.common.Player.REPEAT_MODE_OFF,
+    onToggleShuffle: (() -> Unit)? = null,
+    onCycleRepeat: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val isOnlineSong = song.id.startsWith("youtube:")
+    val musicUrl = com.theveloper.pixelplay.data.youtube.musicShareUrl(song)
     val ringtonePermissionMissingMsg = stringResource(R.string.song_info_ringtone_permission_missing)
     val ringtoneFailedFormat = stringResource(R.string.song_info_ringtone_failed)
     val shareChooserTitle = stringResource(R.string.song_info_share_chooser_title)
@@ -360,9 +370,30 @@ fun SongInfoBottomSheet(
     }
 
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { 2 })
+    var onlineInfo by remember(song.id) { mutableStateOf<com.theveloper.pixelplay.data.youtube.OnlineSongMetadata?>(null) }
+    var infoLoading by remember(song.id) { mutableStateOf(false) }
+    var infoAttempted by remember(song.id) { mutableStateOf(false) }
+    var infoRetry by remember(song.id) { mutableStateOf(0) }
+    LaunchedEffect(song.id, pagerState.currentPage, infoRetry) {
+        if (isOnlineSong && pagerState.currentPage == 1 && !infoAttempted) {
+            infoLoading = true
+            try {
+                onlineInfo = songInfoViewModel.loadOnlineInfo(song)
+                infoAttempted = true
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { infoAttempted = true }
+            finally { infoLoading = false }
+        }
+    }
+    val onlineDuration = onlineInfo?.durationMs ?: song.duration.takeIf { it > 0 }
+    val onlineAlbum = onlineInfo?.album ?: song.album.takeUnless { it.isBlank() || it == "YouTube Music" }
+    val unavailableInfo = stringResource(if (infoLoading) R.string.song_info_loading_value else R.string.song_info_unavailable_value)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     val configuration = LocalConfiguration.current
+    var bottomTabsHeightPx by remember { mutableStateOf(0) }
+    val bottomTabsClearance = with(LocalDensity.current) { bottomTabsHeightPx.toDp() }
+        .coerceAtLeast(80.dp)
     val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
     val maxPagerHeight = (
         configuration.screenHeightDp.dp -
@@ -427,7 +458,7 @@ fun SongInfoBottomSheet(
                                     text = song.title
                                 )
                             }
-                            val isEditable = remember(song) { songInfoViewModel.isSongEditable(song) }
+                            val isEditable = remember(song) { !isOnlineSong && songInfoViewModel.isSongEditable(song) }
                             if (isEditable) {
                                 FilledTonalIconButton(
                                     modifier = Modifier
@@ -470,6 +501,7 @@ fun SongInfoBottomSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = maxPagerHeight)
+                            .padding(bottom = bottomTabsClearance)
                             .animateContentSize(
                                 animationSpec = sizeAnimationSpec,
                                 alignment = Alignment.TopCenter
@@ -505,9 +537,14 @@ fun SongInfoBottomSheet(
                                             onShareClick = {
                                                 try {
                                                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                        type = "audio/*"
-                                                        putExtra(Intent.EXTRA_STREAM, song.contentUriString.toUri())
-                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                        if (musicUrl != null) {
+                                                            type = "text/plain"
+                                                            putExtra(Intent.EXTRA_TEXT, "${song.title} — ${song.artist}\n$musicUrl")
+                                                        } else {
+                                                            type = "audio/*"
+                                                            putExtra(Intent.EXTRA_STREAM, song.contentUriString.toUri())
+                                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                        }
                                                     }
                                                     context.startActivity(
                                                         Intent.createChooser(
@@ -527,12 +564,33 @@ fun SongInfoBottomSheet(
                                             evenCornerRadiusElems = evenCornerRadiusElems
                                         )
 
+                                        if (onToggleShuffle != null && onCycleRepeat != null) {
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                                FilledTonalButton(onClick = onToggleShuffle, modifier = Modifier.weight(1f),
+                                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                                        containerColor = if (isShuffleEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)) {
+                                                    Icon(Icons.Rounded.Shuffle, null)
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(stringResource(if (isShuffleEnabled) R.string.song_actions_shuffle_on else R.string.song_actions_shuffle_off))
+                                                }
+                                                FilledTonalButton(onClick = onCycleRepeat, modifier = Modifier.weight(1f)) {
+                                                    Icon(Icons.Rounded.Repeat, null)
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(stringResource(when (repeatMode) {
+                                                        androidx.media3.common.Player.REPEAT_MODE_ONE -> R.string.song_actions_repeat_one
+                                                        androidx.media3.common.Player.REPEAT_MODE_ALL -> R.string.song_actions_repeat_all
+                                                        else -> R.string.song_actions_repeat_off
+                                                    }))
+                                                }
+                                            }
+                                        }
                                         Row2Actions(
                                             onAddToQueue = onAddToQueue,
                                             onAddNextToQueue = onAddNextToQueue
                                         )
 
                                         Row3Actions(
+                                            showDelete = !isOnlineSong,
                                             onAddToPlaylist = onAddToPlayList,
                                             onDelete = {
                                                 (context as? Activity)?.let { activity ->
@@ -546,6 +604,7 @@ fun SongInfoBottomSheet(
                                             }
                                         )
 
+                                        if (!isOnlineSong) {
                                         val shouldRenderWatchTransferRow =
                                             currentSongTransfer != null ||
                                                     shouldOfferWatchTransfer ||
@@ -576,7 +635,8 @@ fun SongInfoBottomSheet(
                                             )
                                         }
 
-                                        Spacer(Modifier.height(80.dp))
+                                        }
+
                                     }
                                 }
                                 1 -> { // Details / Info
@@ -600,9 +660,14 @@ fun SongInfoBottomSheet(
                                                 .clip(infoSegmentContainerShape),
                                             verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
+                                            if (isOnlineSong && infoAttempted && !infoLoading && (onlineDuration == null || onlineAlbum == null)) {
+                                                TextButton(onClick = { infoAttempted = false; infoRetry++ }) {
+                                                    Text(stringResource(R.string.song_info_retry_details))
+                                                }
+                                            }
                                             SongInfoSegmentedListItem(
                                                 headline = stringResource(R.string.song_info_duration_label),
-                                                supporting = formatDuration(song.duration),
+                                                supporting = if (isOnlineSong) onlineDuration?.let(::formatDuration) ?: unavailableInfo else formatDuration(song.duration),
                                                 icon = Icons.Rounded.Schedule,
                                                 iconDescription = stringResource(R.string.song_info_duration_label),
                                                 shape = infoSegmentItemShape,
@@ -621,11 +686,11 @@ fun SongInfoBottomSheet(
 
                                             SongInfoSegmentedListItem(
                                                 headline = stringResource(R.string.song_info_album_label),
-                                                supporting = song.album,
+                                                supporting = if (isOnlineSong) onlineAlbum ?: unavailableInfo else song.album,
                                                 icon = Icons.Rounded.Album,
                                                 iconDescription = stringResource(R.string.song_info_album_label),
                                                 shape = infoSegmentItemShape,
-                                                onClick = onNavigateToAlbum,
+                                                onClick = onNavigateToAlbum.takeUnless { isOnlineSong || song.albumId < 0 },
                                             )
 
                                             SongInfoSegmentedListItem(
@@ -667,7 +732,6 @@ fun SongInfoBottomSheet(
                                                 shape = infoSegmentItemShape,
                                             )
                                         }
-                                        Spacer(Modifier.height(80.dp))
                                     }
                                 }
                             }
@@ -681,6 +745,7 @@ fun SongInfoBottomSheet(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
+                        .onSizeChanged { bottomTabsHeightPx = it.height }
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                         .clip(CircleShape)
@@ -1467,6 +1532,7 @@ private fun Row2Actions(
 
 @Composable
 private fun Row3Actions(
+    showDelete: Boolean = true,
     onAddToPlaylist: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -1525,7 +1591,7 @@ private fun Row3Actions(
     ) {
         FilledTonalButton(
             modifier = Modifier
-                .weight(weightPlaylist)
+                .weight(if (showDelete) weightPlaylist else 1f)
                 .heightIn(min = 66.dp),
             colors = ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -1561,6 +1627,7 @@ private fun Row3Actions(
             )
         }
 
+        if (showDelete) {
         FilledTonalButton(
             modifier = Modifier
                 .weight(weightDelete)
@@ -1597,6 +1664,7 @@ private fun Row3Actions(
                 maxLines = 2,
                 lineHeight = 20.sp
             )
+        }
         }
     }
 }

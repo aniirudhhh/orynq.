@@ -184,6 +184,7 @@ private data class SortOptionsSnapshot(
 class PlayerViewModel @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val musicRepository: MusicRepository,
+    private val youtubeRepository: com.theveloper.pixelplay.data.youtube.YouTubeRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
     private val aiPreferencesRepository: AiPreferencesRepository,
     private val themePreferencesRepository: ThemePreferencesRepository,
@@ -765,6 +766,11 @@ class PlayerViewModel @Inject constructor(
         // Initialize helper classes with our coroutine scope
         listeningStatsTracker.initialize(viewModelScope)
         dailyMixStateHolder.initialize(viewModelScope)
+        viewModelScope.launch(Dispatchers.IO) {
+            stablePlayerState.map { it.currentSong }.distinctUntilChanged().collect { song ->
+                song?.let(youtubeRepository::rememberOnlineSong)
+            }
+        }
         lyricsStateHolder.initialize(viewModelScope, lyricsLoadCallback, playbackStateHolder.stablePlayerState)
         playbackStateHolder.initialize(
             coroutineScope = viewModelScope,
@@ -1196,8 +1202,9 @@ class PlayerViewModel @Inject constructor(
     val playbackAudioMetadata: StateFlow<PlaybackAudioMetadata> =
         mediaControllerSyncStateHolder.playbackAudioMetadata
 
-    val favoriteSongIds: StateFlow<Set<String>> = musicRepository
-        .getFavoriteSongIdsFlow()
+    val favoriteSongIds: StateFlow<Set<String>> = combine(musicRepository.getFavoriteSongIdsFlow(), youtubeRepository.savedTracks) { local, online ->
+            local + online.map { "youtube:${it.videoId}" }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     val isCurrentSongFavorite: StateFlow<Boolean> = combine(
@@ -1369,6 +1376,8 @@ class PlayerViewModel @Inject constructor(
 
     // Daily mix state is now managed by DailyMixStateHolder
     val dailyMixSongs: StateFlow<ImmutableList<Song>> = dailyMixStateHolder.dailyMixSongs
+    val isUpdatingDailyMix = dailyMixStateHolder.isUpdating
+    val dailyMixError = dailyMixStateHolder.error
     val yourMixSongs: StateFlow<ImmutableList<Song>> = dailyMixStateHolder.yourMixSongs
 
     fun removeFromDailyMix(songId: String) {
@@ -2012,6 +2021,43 @@ class PlayerViewModel @Inject constructor(
         setStorageFilter(next)
     }
 
+    private var onlineRadioRequest: Job? = null
+
+    fun playOnlineRadio(song: Song) {
+        onlineRadioRequest?.cancel()
+        val videoId = song.id.removePrefix("youtube:")
+        val sourceName = "Radio: ${song.title}"
+        playbackDispatchStateHolder.showAndPlaySong(song, listOf(song), sourceName)
+        onlineRadioRequest = viewModelScope.launch {
+            try {
+                val related = youtubeRepository.songRadio(videoId).map { it.asSong() }
+                val ready = withTimeoutOrNull(10_000L) {
+                    while (mediaController?.currentMediaItem?.mediaId != song.id) {
+                        if (playerUiState.value.currentQueueSourceName != sourceName) return@withTimeoutOrNull false
+                        delay(100L)
+                    }
+                    true
+                } == true
+                if (!ready || stablePlayerState.value.currentSong?.id != song.id ||
+                    playerUiState.value.currentQueueSourceName != sourceName) return@launch
+                if (related.isEmpty()) {
+                    sendToast("No related songs available for this track yet.")
+                    return@launch
+                }
+                val controller = mediaController ?: return@launch
+                val queuedIds = (0 until controller.mediaItemCount).map { controller.getMediaItemAt(it).mediaId }.toSet()
+                val existingSongs = playerUiState.value.currentPlaybackQueue
+                val additions = related.filterNot { it.id in queuedIds }
+                additions.forEach(::addSongToQueue)
+                queueStateHolder.setOriginalQueueOrder(existingSongs + additions)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (stablePlayerState.value.currentSong?.id == song.id && playerUiState.value.currentQueueSourceName == sourceName)
+                    sendToast("Couldn't load related songs. Try starting this song again.")
+            }
+        }
+    }
+
     fun showAndPlaySong(
         song: Song,
         contextSongs: List<Song>,
@@ -2020,11 +2066,17 @@ class PlayerViewModel @Inject constructor(
         cancelPendingQueueBuild: Boolean = true,
         playlistId: String? = null,
         indexInQueue: Int? = null
-    ) = playbackDispatchStateHolder.showAndPlaySong(
-        song, contextSongs, queueName, isVoluntaryPlay, cancelPendingQueueBuild, playlistId, indexInQueue
-    )
+    ) {
+        onlineRadioRequest?.cancel()
+        playbackDispatchStateHolder.showAndPlaySong(
+            song, contextSongs, queueName, isVoluntaryPlay, cancelPendingQueueBuild, playlistId, indexInQueue
+        )
+    }
 
-    fun showAndPlaySong(song: Song) = playbackDispatchStateHolder.showAndPlaySong(song)
+    fun showAndPlaySong(song: Song) {
+        onlineRadioRequest?.cancel()
+        playbackDispatchStateHolder.showAndPlaySong(song)
+    }
 
     fun playAlbum(album: Album) =
         queueStateHolder.playAlbum(album, playbackSourceCallbacks())
@@ -2256,11 +2308,15 @@ class PlayerViewModel @Inject constructor(
     }
 
     private suspend fun setFavoriteStatusEverywhere(songId: String, isFavorite: Boolean) {
-        musicRepository.setFavoriteStatus(songId, isFavorite)
+        if (songId.startsWith("youtube:")) {
+            val track = youtubeRepository.savedTracks.value.firstOrNull { "youtube:${it.videoId}" == songId }
+            if (!isFavorite && track != null) youtubeRepository.toggleSaved(track)
+        } else musicRepository.setFavoriteStatus(songId, isFavorite)
     }
 
     fun toggleFavorite() {
         val currentSong = playbackStateHolder.stablePlayerState.value.currentSong ?: return
+        if (currentSong.id.startsWith("youtube:")) { toggleFavoriteSpecificSong(currentSong); return }
         viewModelScope.launch {
             val favoriteSongId = resolveFavoriteSongId(currentSong) ?: return@launch
             val currentlyFavorite = favoriteSongIds.value.contains(favoriteSongId)
@@ -2269,6 +2325,12 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun toggleFavoriteSpecificSong(song: Song, removing: Boolean = false) {
+        if (song.id.startsWith("youtube:")) {
+            val existing = youtubeRepository.savedTracks.value.firstOrNull { "youtube:${it.videoId}" == song.id }
+            if (!removing || existing != null) youtubeRepository.toggleSaved(
+                com.theveloper.pixelplay.data.youtube.OnlineTrack(song.id.removePrefix("youtube:"), song.title, song.artist, song.albumArtUriString, song.duration))
+            return
+        }
         viewModelScope.launch {
             val favoriteSongId = resolveFavoriteSongId(song) ?: return@launch
             val currentlyFavorite = favoriteSongIds.value.contains(favoriteSongId)
@@ -2279,6 +2341,7 @@ class PlayerViewModel @Inject constructor(
 
     private suspend fun resolveFavoriteSongId(song: Song?): String? {
         song ?: return null
+        if (song.id.startsWith("youtube:")) return song.id
         if (song.id.toLongOrNull() != null) {
             return song.id
         }
@@ -2811,6 +2874,8 @@ class PlayerViewModel @Inject constructor(
             userPreferencesRepository.resetLibraryTabsOrder()
         }
     }
+
+    fun retainOnlineSongForPlaylist(song: Song) = youtubeRepository.retainPlaylistSong(song)
 
     fun selectSongForInfo(song: Song) {
         _selectedSongForInfo.value = song

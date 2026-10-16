@@ -966,7 +966,16 @@ fun PlaylistDetailScreen(
             }
         }.value ?: false
 
-        if (currentSong != null) {
+        if (currentSong != null && currentSong.id.startsWith("youtube:")) {
+            com.theveloper.pixelplay.presentation.components.OnlineSongMenu(
+                com.theveloper.pixelplay.presentation.components.OnlineSongMenuRequest(currentSong) {
+                    playerViewModel.showAndPlaySong(currentSong, songsInPlaylist, currentPlaylist?.name ?: "")
+                }, playerViewModel, onDismiss = { showSongInfoBottomSheet = false },
+                currentPlaylistId = playlistId, onArtist = { song ->
+                    playerViewModel.updateSearchQuery(song.artist)
+                    navController.navigateSafely(Screen.Search.route)
+                })
+        } else if (currentSong != null) {
             SongInfoBottomSheet(
                 song = currentSong,
                 isFavorite = isFavorite,

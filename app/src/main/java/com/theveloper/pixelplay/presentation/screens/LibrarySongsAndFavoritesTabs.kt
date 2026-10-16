@@ -89,6 +89,9 @@ fun LibraryFavoritesTab(
     storageFilter: StorageFilter = StorageFilter.ALL,
     hasCurrentSong: Boolean = false
 ) {
+    val online: com.theveloper.pixelplay.presentation.youtube.OnlineHomeViewModel = androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel()
+    val savedOnline by online.savedTracks.collectAsStateWithLifecycle()
+    val onlineSongs = remember(savedOnline) { savedOnline.map { it.asSong() } }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val visibilityCallback by rememberUpdatedState(onLocateCurrentSongVisibilityChanged)
@@ -197,7 +200,7 @@ fun LibraryFavoritesTab(
         }
     }
 
-    if (favoriteSongs.itemCount == 0 && favoriteSongs.loadState.refresh !is LoadState.Loading) {
+    if (onlineSongs.isEmpty() && favoriteSongs.itemCount == 0 && favoriteSongs.loadState.refresh !is LoadState.Loading) {
         LibraryExpressiveEmptyState(
             tabId = LibraryTabId.LIKED,
             storageFilter = storageFilter,
@@ -239,6 +242,21 @@ fun LibraryFavoritesTab(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(bottom = bottomBarHeight + MiniPlayerHeight + 30.dp)
                     ) {
+                        items(count = onlineSongs.size, key = { onlineSongs[it].id }) { index ->
+                            val song = onlineSongs[index]
+                            LibraryPlaybackAwareSongItem(
+                                song = song, playerViewModel = playerViewModel,
+                                onMoreOptionsClick = { onMoreOptionsClick(song) },
+                                isSelected = selectedSongIds.contains(song.id),
+                                selectionIndex = if (isSelectionMode) getSelectionIndex(song.id) else null,
+                                isSelectionMode = isSelectionMode,
+                                onLongPress = { onSongLongPress(song) },
+                                onClick = {
+                                    if (isSelectionMode) onSongSelectionToggle(song)
+                                    else playerViewModel.showAndPlaySong(song, onlineSongs, "Liked songs")
+                                }
+                            )
+                        }
                         items(
                             count = favoriteSongs.itemCount,
                             key = { index -> favoriteSongs.peek(index)?.id ?: index },

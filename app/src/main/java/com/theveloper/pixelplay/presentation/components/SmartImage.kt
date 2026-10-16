@@ -63,14 +63,29 @@ fun SmartImage(
     onState: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val artworkModel = remember(model, context) { normalizeYouTubeArtworkModel(model, context) }
     val clippedModifier = modifier.clip(shape)
-    val requestTargetSize = remember(targetSize) {
-        safeAlbumArtTargetSize(targetSize)
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    val requestTargetSize = remember(targetSize, artworkModel, density) {
+        val url = when (artworkModel) {
+            is ImageRequest -> artworkModel.data as? String
+            is String -> artworkModel
+            else -> null
+        }
+        val isYouTubeArtwork = url?.let {
+            runCatching { java.net.URI(it).host }.getOrNull() in
+                setOf("lh3.googleusercontent.com", "yt3.googleusercontent.com", "yt3.ggpht.com", "i.ytimg.com")
+        } == true
+        val width = (targetSize.width as? coil.size.Dimension.Pixels)?.px
+        val height = (targetSize.height as? coil.size.Dimension.Pixels)?.px
+        safeAlbumArtTargetSize(if (isYouTubeArtwork && width != null && height != null)
+            Size((width * density).toInt().coerceAtMost(1200), (height * density).toInt().coerceAtMost(1200))
+        else targetSize)
     }
 
     // Handle direct models (Bitmap, Vector, etc) early to avoid ImageRequest overhead
-    if (model == null || model is ImageVector || model is Painter || model is ImageBitmap || model is Bitmap) {
-        if (model == null) {
+    if (artworkModel == null || artworkModel is ImageVector || artworkModel is Painter || artworkModel is ImageBitmap || artworkModel is Bitmap) {
+        if (artworkModel == null) {
             Placeholder(
                 modifier = clippedModifier,
                 drawableResId = placeholderResId,
@@ -81,7 +96,7 @@ fun SmartImage(
             )
         } else {
             handleDirectModel(
-                data = model,
+                data = artworkModel,
                 modifier = clippedModifier,
                 contentDescription = contentDescription,
                 contentScale = contentScale,
@@ -94,20 +109,20 @@ fun SmartImage(
 
     val request = remember(
         context,
-        model,
+        artworkModel,
         crossfadeDurationMillis,
         useDiskCache,
         useMemoryCache,
         allowHardware,
         requestTargetSize
     ) {
-        if (model is ImageRequest) {
-            model.newBuilder(context)
+        if (artworkModel is ImageRequest) {
+            artworkModel.newBuilder(context)
                 .size(requestTargetSize)
                 .build()
         } else {
             ImageRequest.Builder(context)
-                .data(model)
+                .data(artworkModel)
                 .crossfade(crossfadeDurationMillis)
                 .diskCachePolicy(if (useDiskCache) CachePolicy.ENABLED else CachePolicy.DISABLED)
                 .memoryCachePolicy(if (useMemoryCache) CachePolicy.ENABLED else CachePolicy.DISABLED)

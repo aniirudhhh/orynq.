@@ -99,8 +99,6 @@ import androidx.compose.ui.res.stringResource
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun DailyMixScreen(
-    mainViewModel: MainViewModel = hiltViewModel(),
-    playlistViewModel: PlaylistViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel,
     navController: NavController,
 ) {
@@ -116,13 +114,14 @@ fun DailyMixScreen(
     val systemNavBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val bottomBarHeightDp = resolveNavBarOccupiedHeight(systemNavBarInset, navBarCompactMode)
     var showPlaylistBottomSheet by remember { mutableStateOf(false) }
-    val stablePlayerState by playerViewModel.stablePlayerState.collectAsStateWithLifecycle()
     val favoriteSongIds by playerViewModel.favoriteSongIds.collectAsStateWithLifecycle()
     val selectedSongForInfo by playerViewModel.selectedSongForInfo.collectAsStateWithLifecycle()
 
     val showAiSheet by playerViewModel.showAiPlaylistSheet.collectAsStateWithLifecycle()
     val isGeneratingAiPlaylist by playerViewModel.isGeneratingAiPlaylist.collectAsStateWithLifecycle()
     val aiStatus by playerViewModel.aiStatus.collectAsStateWithLifecycle()
+    val isUpdatingMix by playerViewModel.isUpdatingDailyMix.collectAsStateWithLifecycle()
+    val dailyMixError by playerViewModel.dailyMixError.collectAsStateWithLifecycle()
     val aiError by playerViewModel.aiError.collectAsStateWithLifecycle()
     val aiSuccess by playerViewModel.aiSuccess.collectAsStateWithLifecycle()
     val lazyListState = rememberLazyListState()
@@ -171,6 +170,7 @@ fun DailyMixScreen(
     }
 
     if (showSongInfoSheet && selectedSongForInfo != null) {
+        val playlistViewModel: PlaylistViewModel = hiltViewModel()
         val song = selectedSongForInfo!!
         val removeFromListTrigger = remember(dailyMixSongs) {
             {
@@ -258,7 +258,15 @@ fun DailyMixScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                ContainedLoadingIndicator()
+                Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (isUpdatingMix) ContainedLoadingIndicator()
+                    Text(text = dailyMixError ?: if (isUpdatingMix) stringResource(R.string.online_mix_building)
+                        else stringResource(R.string.online_mix_empty), style = MaterialTheme.typography.bodyLarge)
+                    FilledTonalButton(onClick = { playerViewModel.forceUpdateDailyMix() }, enabled = !isUpdatingMix) {
+                        Text(stringResource(R.string.online_mix_refresh))
+                    }
+                }
             }
         } else {
             LazyColumn(
@@ -275,6 +283,14 @@ fun DailyMixScreen(
                     )
                 }
 
+                item(key = "daily_mix_refresh") {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                        dailyMixError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        FilledTonalButton(onClick = { playerViewModel.forceUpdateDailyMix() }, enabled = !isUpdatingMix) {
+                            Text(stringResource(if (isUpdatingMix) R.string.online_mix_building else R.string.online_mix_refresh))
+                        }
+                    }
+                }
                 item(key = "play_shuffle_buttons") {
                     Row(
                         modifier = Modifier
@@ -354,7 +370,7 @@ fun DailyMixScreen(
                         modifier = Modifier
                             .padding(horizontal = 16.dp),
                         song = song,
-                        isCurrentSong = stablePlayerState.currentSong?.id == song.id,
+                        isCurrentSong = currentSongId == song.id,
                         isPlaying = currentSongId == song.id && isPlaying,
                         onClick = { playerViewModel.showAndPlaySong(song, dailyMixSongs, dailyMixTitle, isVoluntaryPlay = false) },
                         onMoreOptionsClick = {
@@ -495,6 +511,8 @@ private fun ExpressiveDailyMixHeader(
                             ) {
                                 SmartImage(
                                     model = artUrl ?: R.drawable.rounded_album_24,
+                                    crossfadeDurationMillis = 0,
+                                    allowHardware = true,
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
@@ -510,6 +528,8 @@ private fun ExpressiveDailyMixHeader(
                         ) {
                             SmartImage(
                                 model = artUrl ?: R.drawable.rounded_album_24,
+                                    crossfadeDurationMillis = 0,
+                                    allowHardware = true,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize()

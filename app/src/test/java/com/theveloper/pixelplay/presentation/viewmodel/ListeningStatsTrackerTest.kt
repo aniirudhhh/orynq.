@@ -34,6 +34,7 @@ class ListeningStatsTrackerTest {
     fun `finalizeCurrentSession preserves listening longer than track duration`() {
         val tracker = ListeningStatsTracker(
             dailyMixManager = dailyMixManager,
+            listeningSync = mockk(relaxed = true),
             playbackStatsRepository = playbackStatsRepository
         )
         val song = song(
@@ -67,6 +68,7 @@ class ListeningStatsTrackerTest {
     fun `onProgress accumulates incremental listening time`() {
         val tracker = ListeningStatsTracker(
             dailyMixManager = dailyMixManager,
+            listeningSync = mockk(relaxed = true),
             playbackStatsRepository = playbackStatsRepository
         )
         val song = song(songId = "song-1")
@@ -93,6 +95,22 @@ class ListeningStatsTrackerTest {
             playbackStatsRepository.recordPlayback(song.id, expectedDurationMs, any())
         }
         assertThat(expectedDurationMs).isGreaterThan(TimeUnit.SECONDS.toMillis(5))
+    }
+
+    @Test
+    fun `sync gets actual listening excluding pause and seek and finalizes once`() {
+        val sync = mockk<com.theveloper.pixelplay.data.youtube.YouTubeListeningSync>(relaxed = true)
+        val ticket = com.theveloper.pixelplay.data.youtube.ListeningSyncTicket("account", "revision", "abcdefghijk")
+        every { sync.begin("youtube:abcdefghijk") } returns ticket
+        val tracker = ListeningStatsTracker(dailyMixManager, playbackStatsRepository, sync)
+        every { SystemClock.elapsedRealtime() } returnsMany listOf(1_000L, 11_000L, 100_000L, 101_000L, 121_000L)
+        tracker.onSongChanged(song("youtube:abcdefghijk"), 0, 300_000, true)
+        tracker.onPlayStateChanged(false, 10_000)
+        tracker.onProgress(250_000, false)
+        tracker.onPlayStateChanged(true, 250_000)
+        tracker.finalizeCurrentSession()
+        tracker.finalizeCurrentSession()
+        io.mockk.verify(exactly = 1) { sync.complete(ticket, 30_000) }
     }
 
     private fun song(songId: String, durationMs: Long = 5 * 60 * 1000L): Song = Song(

@@ -52,7 +52,12 @@ class PlayerControlActionCallback : ActionCallback {
                         action
                     )
                     serviceIntent.putExtra(MusicService.EXTRA_FORCE_FOREGROUND_ON_START, true)
-                    context.startForegroundService(serviceIntent)
+                    MusicService.markPendingMediaButtonForegroundStart()
+                    try { context.startForegroundService(serviceIntent) }
+                    catch (failure: Throwable) {
+                        MusicService.unmarkPendingMediaButtonForegroundStart()
+                        throw failure
+                    }
                 }
             } else {
                 context.startService(serviceIntent)

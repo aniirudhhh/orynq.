@@ -13,14 +13,14 @@
     <string name="setup_beta_label">베타</string>
     <string name="setup_intro_body">모든 설정을 완료해 보겠습니다.</string>
     <string name="setup_permission_media_title">미디어 권한</string>
-    <string name="setup_permission_media_description">PixelPlayer가 음악 라이브러리를 구축하려면 오디오 파일에 대한 액세스 권한이 필요합니다.</string>
+    <string name="setup_permission_media_description">orynq.가 음악 라이브러리를 구축하려면 오디오 파일에 대한 액세스 권한이 필요합니다.</string>
     <string name="setup_permission_granted">권한 허용됨</string>
     <string name="setup_grant_media_permission">미디어 권한 허용</string>
     <string name="setup_permission_notifications_title">알림</string>
     <string name="setup_permission_notifications_description">잠금 화면 및 알림창에서 음악을 제어하려면 알림을 활성화하세요.</string>
     <string name="setup_enable_notifications">알림 활성화</string>
     <string name="setup_backup_have_title">백업 파일이 있나요?</string>
-    <string name="setup_backup_have_description">이미 PixelPlayer 백업이 있는 경우, 지금 복구하여 나머지 설정 과정을 건너뛸 수 있습니다.</string>
+    <string name="setup_backup_have_description">이미 orynq. 백업이 있는 경우, 지금 복구하여 나머지 설정 과정을 건너뛸 수 있습니다.</string>
     <string name="setup_import_backup">백업 가져오기</string>
     <string name="setup_inspecting_backup">백업 검사 중</string>
     <string name="setup_checking_backup">백업 패키지 확인 중…</string>
@@ -41,7 +41,7 @@
     <string name="setup_theme_title">앱 테마</string>
     <string name="setup_theme_subtitle">라이브러리를 탐색하기 전에 원하는 스타일을 선택하세요.</string>
     <string name="setup_theme_dark_title">어두운 테마</string>
-    <string name="setup_theme_dark_description">PixelPlayer의 기본 Material 3 어두운 디자인입니다.</string>
+    <string name="setup_theme_dark_description">orynq.의 기본 Material 3 어두운 디자인입니다.</string>
     <string name="setup_theme_light_title">밝은 테마</string>
     <string name="setup_theme_light_description">앱 전체에 적용되는 밝은 Material 3 디자인입니다.</string>
     <string name="setup_theme_follow_title">시스템 설정 따르기</string>

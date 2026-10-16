@@ -37,7 +37,7 @@ class WearPhoneTransferSender @Inject constructor(
             capability.nodes.isNotEmpty()
         }.getOrElse { error ->
             transferStateStore.retainReachableWatchNodes(emptySet())
-            Timber.tag(TAG).w(error, "Failed checking PixelPlay Wear availability")
+            Timber.tag(TAG).w(error, "Failed checking orynq. Wear availability")
             false
         }
     }
@@ -75,7 +75,7 @@ class WearPhoneTransferSender @Inject constructor(
             val nodes = capability.nodes
             transferStateStore.retainReachableWatchNodes(nodes.map { it.id }.toSet())
             if (nodes.isEmpty()) {
-                error("No reachable watch with PixelPlay")
+                error("No reachable watch with orynq.")
             }
 
             val request = WearTransferRequest(
