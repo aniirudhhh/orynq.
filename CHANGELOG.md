@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Keep Search state scoped to its owning player ViewModel so closing another player screen cannot disable history removal and clear-all actions.
 - Replace the Search genre grid with local recent searches: up to 20 unique queries, quick re-search, edit, remove, and clear all. Save submissions and result interactions rather than partial typing.
 
 ## [0.1.0-beta] — 2026-10-17
