@@ -647,20 +647,25 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun addSearchHistoryItem(query: String) {
         withContext(Dispatchers.IO) {
-            searchHistoryDao.deleteByQuery(query)
-            searchHistoryDao.insert(SearchHistoryEntity(query = query, timestamp = System.currentTimeMillis()))
+            searchHistoryDao.record(query, System.currentTimeMillis())
         }
     }
 
     override suspend fun getRecentSearchHistory(limit: Int): List<SearchHistoryItem> {
         return withContext(Dispatchers.IO) {
-            searchHistoryDao.getRecentSearches(limit).map { it.toSearchHistoryItem() }
+            com.theveloper.pixelplay.data.model.SearchHistoryPolicy.recent(
+                searchHistoryDao.getAll().map { it.toSearchHistoryItem() }, limit
+            )
         }
     }
 
     override suspend fun deleteSearchHistoryItemByQuery(query: String) {
         withContext(Dispatchers.IO) {
-            searchHistoryDao.deleteByQuery(query)
+            val normalized = com.theveloper.pixelplay.data.model.SearchHistoryPolicy.normalize(query)
+            searchHistoryDao.getAll().filter {
+                com.theveloper.pixelplay.data.model.SearchHistoryPolicy.normalize(it.query)
+                    .equals(normalized, ignoreCase = true)
+            }.forEach { searchHistoryDao.deleteByQuery(it.query) }
         }
     }
 

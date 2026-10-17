@@ -378,17 +378,23 @@ class MusicRepositoryImplTest {
         @Test
         fun `addSearchHistoryItem calls dao methods`() = runTest {
             val query = "test query"
-            coEvery { mockSearchHistoryDao.deleteByQuery(query) } just runs
-            coEvery { mockSearchHistoryDao.insert(any()) } just runs
+            coEvery { mockSearchHistoryDao.record(query, any()) } just runs
 
             musicRepository.addSearchHistoryItem(query)
 
             coVerifyOrder {
-                mockSearchHistoryDao.deleteByQuery(query)
-                mockSearchHistoryDao.insert(any())
+                mockSearchHistoryDao.record(query, any())
             }
         }
-        // TODO: Añadir más tests para el historial si es necesario
+        @Test
+        fun `delete history removes original legacy spelling and whitespace`() = runTest {
+            val original = "  ÉTÉ   music  "
+            coEvery { mockSearchHistoryDao.getAll() } returns listOf(
+                com.theveloper.pixelplay.data.database.SearchHistoryEntity(query = original, timestamp = 1)
+            )
+            musicRepository.deleteSearchHistoryItemByQuery("été music")
+            coVerify(exactly = 1) { mockSearchHistoryDao.deleteByQuery(original) }
+        }
     }
 
     // TODO: Añadir tests para:

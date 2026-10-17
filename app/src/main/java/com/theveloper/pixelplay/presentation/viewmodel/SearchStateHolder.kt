@@ -11,6 +11,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +67,7 @@ class SearchStateHolder @Inject constructor(
 
     private var scope: CoroutineScope? = null
     private var searchJob: Job? = null
+    private val historyMutex = Mutex()
 
     /**
      * Initialize with ViewModel scope.
@@ -130,31 +133,35 @@ class SearchStateHolder @Inject constructor(
         _selectedSearchFilter.value = filterType
     }
 
-    fun loadSearchHistory(limit: Int = 15) {
+    private fun historyOperation(message: String, operation: suspend () -> Unit) {
         scope?.launch {
-            try {
-                val history = withContext(Dispatchers.IO) {
-                    musicRepository.getRecentSearchHistory(limit)
+            historyMutex.withLock {
+                try {
+                    operation()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Timber.e(e, message)
                 }
-                _searchHistory.value = history.toImmutableList()
-            } catch (e: Exception) {
-                Timber.e(e, "Error loading search history")
             }
         }
     }
 
+    private suspend fun refreshHistory(limit: Int = 20) {
+        _searchHistory.value = withContext(Dispatchers.IO) {
+            musicRepository.getRecentSearchHistory(limit).toImmutableList()
+        }
+    }
+
+    fun loadSearchHistory(limit: Int = 20) = historyOperation("Error loading search history") {
+        refreshHistory(limit)
+    }
+
     fun onSearchQuerySubmitted(query: String) {
-        scope?.launch {
-            if (query.isNotBlank()) {
-                try {
-                    withContext(Dispatchers.IO) {
-                        musicRepository.addSearchHistoryItem(query)
-                    }
-                    loadSearchHistory()
-                } catch (e: Exception) {
-                    Timber.e(e, "Error adding search history item")
-                }
-            }
+        if (query.isBlank()) return
+        historyOperation("Error adding search history item") {
+            withContext(Dispatchers.IO) { musicRepository.addSearchHistoryItem(query) }
+            refreshHistory()
         }
     }
 
@@ -172,30 +179,14 @@ class SearchStateHolder @Inject constructor(
         searchRequests.tryEmit(SearchRequest(normalizedQuery, requestId))
     }
 
-    fun deleteSearchHistoryItem(query: String) {
-        scope?.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    musicRepository.deleteSearchHistoryItemByQuery(query)
-                }
-                loadSearchHistory()
-            } catch (e: Exception) {
-                Timber.e(e, "Error deleting search history item")
-            }
-        }
+    fun deleteSearchHistoryItem(query: String) = historyOperation("Error deleting search history") {
+        withContext(Dispatchers.IO) { musicRepository.deleteSearchHistoryItemByQuery(query) }
+        refreshHistory()
     }
 
-    fun clearSearchHistory() {
-        scope?.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    musicRepository.clearSearchHistory()
-                }
-                _searchHistory.value = persistentListOf()
-            } catch (e: Exception) {
-                Timber.e(e, "Error clearing search history")
-            }
-        }
+    fun clearSearchHistory() = historyOperation("Error clearing search history") {
+        withContext(Dispatchers.IO) { musicRepository.clearSearchHistory() }
+        _searchHistory.value = persistentListOf()
     }
 
     fun onCleared() {

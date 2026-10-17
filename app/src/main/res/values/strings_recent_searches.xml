@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_recent_empty_title">Find your next song</string>
+    <string name="search_recent_empty_body">Search for songs, artists, albums, or playlists. Your recent searches will appear here.</string>
+    <string name="search_recent_edit">Edit search: %1$s</string>
+    <string name="search_recent_remove">Remove search: %1$s</string>
+</resources>

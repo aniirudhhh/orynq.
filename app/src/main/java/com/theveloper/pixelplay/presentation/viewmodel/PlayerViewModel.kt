@@ -2621,7 +2621,7 @@ class PlayerViewModel @Inject constructor(
         searchStateHolder.updateSearchFilter(filterType)
     }
 
-    fun loadSearchHistory(limit: Int = 15) {
+    fun loadSearchHistory(limit: Int = 20) {
         searchStateHolder.loadSearchHistory(limit)
     }
 

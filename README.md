@@ -19,6 +19,7 @@ This is an **unofficial client**, independently developed and not affiliated wit
 - **Personalised Home:** YouTube Music shelves, Quick picks, and recommendations from your connected account.
 - **Instant Home:** saved feed content opens without waiting for a fresh request, with quiet refreshes and pull-to-refresh.
 - **Focused Search:** separate filters for All, Songs, Albums, Artists, and Playlists, plus collection browsing.
+- **Recent searches:** keep the latest 20 unique queries locally, with quick search, editing, individual removal, and clear-all controls.
 - **Online playback:** background streaming with Media3, a full player, media notifications, and queue controls.
 - **Song radio:** related recommendations when you start an individual song from Home or Search.
 - **Daily Mix:** selections informed by your online listening history.

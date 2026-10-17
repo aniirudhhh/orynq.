@@ -29,7 +29,6 @@ import coil.compose.AsyncImagePainter
 import com.theveloper.pixelplay.presentation.components.MultiSelectionBottomSheet
 import com.theveloper.pixelplay.presentation.components.AlbumMultiSelectionOptionSheet
 import com.theveloper.pixelplay.presentation.components.PlaylistMultiSelectionBottomSheet
-import com.theveloper.pixelplay.presentation.components.GenreMultiSelectionOptionSheet
 import com.theveloper.pixelplay.presentation.components.subcomps.SelectionActionRow
 import com.theveloper.pixelplay.presentation.components.subcomps.SelectionCountPill
 import androidx.compose.foundation.BorderStroke
@@ -54,6 +53,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.NorthWest
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Card
@@ -91,7 +92,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.theveloper.pixelplay.data.model.Album
-import com.theveloper.pixelplay.data.model.Genre
 import com.theveloper.pixelplay.data.model.Artist
 import com.theveloper.pixelplay.data.model.Playlist
 import com.theveloper.pixelplay.data.youtube.OnlineSearchCollection
@@ -136,7 +136,6 @@ import com.theveloper.pixelplay.presentation.components.PlaylistCover
 import com.theveloper.pixelplay.presentation.components.resolveMainScreenBottomGradientHeight
 import com.theveloper.pixelplay.presentation.components.resolveNavBarOccupiedHeight
 import com.theveloper.pixelplay.presentation.navigation.Screen
-import com.theveloper.pixelplay.presentation.screens.search.components.GenreCategoriesGrid
 import com.theveloper.pixelplay.presentation.viewmodel.PlaylistViewModel
 import com.theveloper.pixelplay.utils.formatSongCount
 import kotlinx.collections.immutable.ImmutableList
@@ -156,7 +155,8 @@ private const val MAX_ALBUM_MULTI_SELECTION = 6
 
 private data class SearchUiSlice(
     val selectedSearchFilter: SearchFilterType = SearchFilterType.ALL,
-    val searchResults: ImmutableList<SearchResultItem> = persistentListOf()
+    val searchResults: ImmutableList<SearchResultItem> = persistentListOf(),
+    val searchHistory: ImmutableList<SearchHistoryItem> = persistentListOf()
 )
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -202,24 +202,17 @@ fun SearchScreen(
     val selectedPlaylistIds by playlistSelectionState.selectedPlaylistIds.collectAsStateWithLifecycle()
     var showPlaylistMultiSelectionSheet by remember { mutableStateOf(false) }
 
-    // Multi-selection state for genres
-    var selectedGenres by remember { mutableStateOf<List<Genre>>(emptyList()) }
-    val selectedGenreIds = remember(selectedGenres) { selectedGenres.map { it.id }.toSet() }
-    val isGenreSelectionMode = selectedGenres.isNotEmpty()
-    var showGenreMultiSelectionSheet by remember { mutableStateOf(false) }
-
     // Playlist bottom sheet songs helper state
     var playlistSheetSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
 
     // Any selection mode check
-    val anySelectionMode = isSongSelectionMode || isPlaylistSelectionMode || isAlbumSelectionMode || isGenreSelectionMode
+    val anySelectionMode = isSongSelectionMode || isPlaylistSelectionMode || isAlbumSelectionMode
 
     // BackHandler to clear selections
     BackHandler(enabled = anySelectionMode) {
         multiSelectionState.clearSelection()
         playlistSelectionState.clearSelection()
         selectedAlbums = emptyList()
-        selectedGenres = emptyList()
     }
 
     // Long press and toggle callbacks for songs
@@ -234,13 +227,13 @@ fun SearchScreen(
             .map { uiState ->
                 SearchUiSlice(
                     selectedSearchFilter = uiState.selectedSearchFilter,
-                    searchResults = uiState.searchResults
+                    searchResults = uiState.searchResults,
+                    searchHistory = uiState.searchHistory
                 )
             }
             .distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = SearchUiSlice())
     val currentFilter = searchUiState.selectedSearchFilter
-    val genres by playerViewModel.genres.collectAsStateWithLifecycle()
     val stablePlayerState by playerViewModel.stablePlayerState.collectAsStateWithLifecycle()
     val favoriteSongIds by playerViewModel.favoriteSongIds.collectAsStateWithLifecycle()
     val selectedSongForInfo by playerViewModel.selectedSongForInfo.collectAsStateWithLifecycle()
@@ -250,6 +243,7 @@ fun SearchScreen(
     val searchInputFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
+        playerViewModel.loadSearchHistory()
         onSearchBarActiveChange(false)
     }
 
@@ -282,6 +276,7 @@ fun SearchScreen(
     }
     val searchResults = (onlineResults + localResults).toImmutableList()
     val handleSongMoreOptionsClick: (Song) -> Unit = { song ->
+        playerViewModel.onSearchQuerySubmitted(searchQuery)
         if (song.id.startsWith("youtube:")) {
             onlineSongMenu = com.theveloper.pixelplay.presentation.components.OnlineSongMenuRequest(song) {
                 playerViewModel.playOnlineRadio(song)
@@ -443,86 +438,45 @@ fun SearchScreen(
                 }
             }
 
-            val showGenreBrowse by remember(searchQuery) { derivedStateOf { searchQuery.isBlank() } }
+            val showRecentSearches by remember(searchQuery) { derivedStateOf { searchQuery.isBlank() } }
             AnimatedContent(
-                targetState = showGenreBrowse,
+                targetState = showRecentSearches,
                 transitionSpec = {
-                    val switchingToGenre = targetState
+                    val switchingToHistory = targetState
                     val enter = fadeIn(animationSpec = tween(durationMillis = 320, delayMillis = 70)) +
                         slideInVertically(animationSpec = tween(durationMillis = 320)) { fullHeight ->
-                            if (switchingToGenre) -fullHeight / 10 else fullHeight / 10
+                            if (switchingToHistory) -fullHeight / 10 else fullHeight / 10
                         }
                     val exit = fadeOut(animationSpec = tween(durationMillis = 220)) +
                         slideOutVertically(animationSpec = tween(durationMillis = 220)) { fullHeight ->
-                            if (switchingToGenre) fullHeight / 12 else -fullHeight / 12
+                            if (switchingToHistory) fullHeight / 12 else -fullHeight / 12
                         }
                     (enter togetherWith exit).using(SizeTransform(clip = false))
                 },
                 label = "search_mode_transition"
-            ) { isGenreMode ->
-                if (isGenreMode) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        if (isGenreSelectionMode) {
-                            SelectionActionRow(
-                                selectedCount = selectedGenres.size,
-                                onSelectAll = {
-                                    selectedGenres = genres
-                                },
-                                onDeselect = { selectedGenres = emptyList() },
-                                onOptionsClick = { showGenreMultiSelectionSheet = true },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 6.dp)
-                            )
-                        }
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            GenreCategoriesGrid(
-                                genres = (listOf("Pop", "Rock", "Hip-Hop", "Jazz", "Electronic", "Classical", "Focus", "Chill").map { Genre(id = "youtube:$it", name = it) } + genres),
-                                onGenreClick = { genre ->
-                                    Timber.tag("SearchScreen")
-                                        .d("Genre clicked: ${genre.name} (ID: ${genre.id})")
-                                    if (genre.id.startsWith("youtube:")) {
-                                        searchQuery = genre.name
-                                        playerViewModel.updateSearchQuery(genre.name)
-                                    } else {
-                                        val encodedGenreId = java.net.URLEncoder.encode(genre.id, "UTF-8")
-                                        navController.navigateSafely(Screen.GenreDetail.createRoute(encodedGenreId))
-                                    }
-                                },
-                                playerViewModel = playerViewModel,
-                                modifier = Modifier.padding(top = 12.dp),
-                                isSelectionMode = isGenreSelectionMode,
-                                selectedGenreIds = selectedGenreIds,
-                                onGenreLongPress = { genre ->
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    if (selectedGenres.any { it.id == genre.id }) {
-                                        selectedGenres = selectedGenres.filterNot { it.id == genre.id }
-                                    } else {
-                                        selectedGenres = selectedGenres + genre
-                                    }
-                                },
-                                onGenreSelectionToggle = { genre ->
-                                    if (selectedGenres.any { it.id == genre.id }) {
-                                        selectedGenres = selectedGenres.filterNot { it.id == genre.id }
-                                    } else {
-                                        selectedGenres = selectedGenres + genre
-                                    }
-                                },
-                                getSelectionIndex = { genreId ->
-                                    val idx = selectedGenres.indexOfFirst { it.id == genreId }
-                                    if (idx >= 0) idx + 1 else null
-                                }
-                            )
-
-                            SelectionCountPill(
-                                selectedCount = selectedGenres.size,
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .zIndex(2f)
-                                    .padding(top = 16.dp)
-                            )
-                        }
-                    }
+            ) { isHistoryMode ->
+                if (isHistoryMode) {
+                    SearchHistoryList(
+                        historyItems = searchUiState.searchHistory,
+                        onHistoryClick = { query ->
+                            searchQuery = query
+                            playerViewModel.updateSearchQuery(query)
+                            playerViewModel.onSearchQuerySubmitted(query)
+                            keyboardController?.hide()
+                        },
+                        onHistoryEdit = { query ->
+                            searchQuery = query
+                            playerViewModel.updateSearchQuery(query)
+                            searchInputFocusRequester.requestFocus()
+                            keyboardController?.show()
+                        },
+                        onHistoryDelete = playerViewModel::deleteSearchHistoryItem,
+                        onClearAllHistory = playerViewModel::clearSearchHistory,
+                        bottomPadding = maxOf(
+                            MiniPlayerHeight + bottomBarHeightDp + 24.dp,
+                            WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+                        )
+                    )
                 } else {
                     Column(
                         modifier = Modifier
@@ -624,7 +578,10 @@ fun SearchScreen(
                                     SearchResultsList(
                                         results = searchResults,
                                         onlineCollections = onlineCollections,
-                                        onOpenOnlineCollection = online::openCollection,
+                                        onOpenOnlineCollection = { item ->
+                                            playerViewModel.onSearchQuerySubmitted(searchQuery)
+                                            online.openCollection(item)
+                                        },
                                         searchQuery = searchQuery,
                                         playerViewModel = playerViewModel,
                                         onItemSelected = {
@@ -960,38 +917,6 @@ fun SearchScreen(
         )
     }
 
-    // Genre Multi-Selection Option Sheet
-    if (showGenreMultiSelectionSheet && selectedGenres.isNotEmpty()) {
-        GenreMultiSelectionOptionSheet(
-            selectedGenres = selectedGenres,
-            onDismiss = { showGenreMultiSelectionSheet = false },
-            onPlay = {
-                playerViewModel.playSelectedGenres(selectedGenres)
-                selectedGenres = emptyList()
-                showGenreMultiSelectionSheet = false
-            },
-            onPlayNext = {
-                playerViewModel.addSelectedGenresAsNext(selectedGenres)
-                selectedGenres = emptyList()
-                showGenreMultiSelectionSheet = false
-            },
-            onAddToQueue = {
-                playerViewModel.addSelectedGenresToQueue(selectedGenres)
-                selectedGenres = emptyList()
-                showGenreMultiSelectionSheet = false
-            },
-            onAddToPlaylist = {
-                scope.launch {
-                    val songs = playerViewModel.getSongsForGenres(selectedGenres)
-                    playlistSheetSongs = songs
-                    showPlaylistBottomSheet = true
-                    selectedGenres = emptyList()
-                    showGenreMultiSelectionSheet = false
-                }
-            }
-        )
-    }
-
     // Playlist Bottom Sheet (Single or Multi additions)
     if (showPlaylistBottomSheet) {
         val playlistUiState by playlistViewModel.uiState.collectAsStateWithLifecycle()
@@ -1031,42 +956,50 @@ fun SearchResultSectionHeader(title: String) {
 fun SearchHistoryList(
     historyItems: List<SearchHistoryItem>,
     onHistoryClick: (String) -> Unit,
+    onHistoryEdit: (String) -> Unit,
     onHistoryDelete: (String) -> Unit,
-    onClearAllHistory: () -> Unit
+    onClearAllHistory: () -> Unit,
+    bottomPadding: androidx.compose.ui.unit.Dp
 ) {
-    val localDensity = LocalDensity.current
-    Column {
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp, horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 stringResource(R.string.search_recent_searches),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
             )
             if (historyItems.isNotEmpty()) {
                 TextButton(onClick = onClearAllHistory) {
-                    Text(stringResource(R.string.search_action_clear_all), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(stringResource(R.string.search_action_clear_all))
                 }
             }
         }
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(
-                top = 8.dp,
-            )
-        ) {
-            items(historyItems, key = { "history_${it.id ?: it.query}" }, contentType = { "search_history" }) { item ->
-                SearchHistoryListItem(
-                    item = item,
-                    onHistoryClick = onHistoryClick,
-                    onHistoryDelete = onHistoryDelete
+        if (historyItems.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(stringResource(R.string.search_recent_empty_title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(R.string.search_recent_empty_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(top = 8.dp, bottom = bottomPadding)
+            ) {
+                items(historyItems, key = { it.query.lowercase(java.util.Locale.ROOT) }) { item ->
+                    SearchHistoryListItem(item, onHistoryClick, onHistoryEdit, onHistoryDelete)
+                }
             }
         }
     }
@@ -1076,41 +1009,34 @@ fun SearchHistoryList(
 fun SearchHistoryListItem(
     item: SearchHistoryItem,
     onHistoryClick: (String) -> Unit,
+    onHistoryEdit: (String) -> Unit,
     onHistoryDelete: (String) -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .pointerInput(Unit) { detectTapGestures(onTap = { onHistoryClick(item.query) }) }
-            .padding(horizontal = 8.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier.fillMaxWidth()
+            .clip(AbsoluteSmoothCornerShape(24.dp, 60))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .clickable { onHistoryClick(item.query) }
+            .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Icon(
-                imageVector = Icons.Rounded.History,
-                contentDescription = stringResource(R.string.search_cd_search_history_icon),
-                modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = item.query,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        Icon(Icons.Rounded.History, contentDescription = null,
+            modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(12.dp))
+        Text(item.query, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        IconButton(onClick = { onHistoryEdit(item.query) }) {
+            Icon(Icons.Rounded.NorthWest,
+                contentDescription = stringResource(R.string.search_recent_edit, item.query),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         IconButton(onClick = { onHistoryDelete(item.query) }) {
-            Icon(
-                imageVector = Icons.Rounded.DeleteForever,
-                contentDescription = stringResource(R.string.search_cd_delete_search_history_item),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
+            Icon(Icons.Rounded.Close,
+                contentDescription = stringResource(R.string.search_recent_remove, item.query),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
-
 
 @Composable
 fun EmptySearchResults(searchQuery: String, colorScheme: ColorScheme) {
